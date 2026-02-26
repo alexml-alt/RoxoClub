@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RoxoClub — Fidelidade</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#120820}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+  @keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-track{background:#1a1030}
+  ::-webkit-scrollbar-thumb{background:#4a1a7a;border-radius:3px}
+  input,select,textarea,button{font-family:'Segoe UI',system-ui,sans-serif}
+  a{color:#a855f7;text-decoration:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+const { createClient } = supabase;
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL      = "https://pwluhfvexuwrlrfihgoe.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3bHVoZnZleHV3cmxyZmloZ29lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNjQ1OTgsImV4cCI6MjA4NzY0MDU5OH0.pdDn8sezZWMWblvrqlqF1T00yDzKDIqpmDUZ1yAeZek";
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── CORES ───────────────────────────────────────────────────────────────────
+const C = {
+  r900:"#120820",r800:"#1e0d38",r700:"#2d1155",r600:"#4a1a7a",
+  r500:"#6b21a8",r400:"#7c3aed",r300:"#a855f7",r200:"#c084fc",
+  r100:"#e9d5ff",r50:"#f5f0ff",
+  gold:"#f59e0b",goldL:"#fef3c7",
+  green:"#10b981",greenL:"#d1fae5",
+  red:"#ef4444",redL:"#fee2e2",
+  white:"#fff",
+  g50:"#f9fafb",g100:"#f3f4f6",g200:"#e5e7eb",
+  g400:"#9ca3af",g600:"#4b5563",g700:"#374151",g900:"#111827",
+};
+
+// ── API ──────────────────────────────────────────────────────────────────────
+const api = {
+  signIn:  (e,p) => sb.auth.signInWithPassword({email:e,password:p}),
+  signUp:  (e,p) => sb.auth.signUp({email:e,password:p}),
+  signOut: ()    => sb.auth.signOut(),
+  getSession: () => sb.auth.getSession(),
+
+  getStore: (uid) => sb.from("stores").select("*").eq("owner_id",uid).maybeSingle(),
+  createStore: async (uid,name,slug,phone) => sb.from("stores").insert({
+    owner_id:uid, name, slug, phone,
+    settings:{points_per_real:3,min_purchase:10,points_expire:false,expire_days:365,
+      whatsapp_message:"Olá {nome}! Você ganhou {pontos} pontos no RoxoClub 💜. Saldo: {saldo} pts."}
+  }).select().single(),
+  updateSettings: (id,settings) => sb.from("stores").update({settings}).eq("id",id),
+
+  listClients: (sid)  => sb.from("clients").select("*").eq("store_id",sid).order("points",{ascending:false}),
+  createClient:(sid,d)=> sb.from("clients").insert({store_id:sid,...d}).select().single(),
+
+  listTx: (sid) => sb.from("transactions").select("*, clients(name,phone)").eq("store_id",sid).order("created_at",{ascending:false}).limit(50),
+  listClientTx:(cid)=> sb.from("transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(30),
+
+  addPoints: async (sid,cid,amount,note,settings) => {
+    const pts = Math.floor(amount*(settings.points_per_real||3));
+    const {data:tx,error} = await sb.from("transactions").insert({
+      store_id:sid, client_id:cid, type:"earn",
+      points:pts, amount_paid:amount, note:note||null
+    }).select().single();
+    if(error) return {error};
+    const {data:c} = await sb.from("clients").select("points,total_visits").eq("id",cid).single();
+    const newPts = (c?.points||0)+pts;
+    await sb.from("clients").update({
+      points:newPts, total_visits:(c?.total_visits||0)+1,
+      last_visit:new Date().toISOString(),
+      level: newPts>=1000?"vip":"basico"
+    }).eq("id",cid);
+    return {data:{...tx,pts}};
+  },
+
+  redeem: async (sid,cid,reward) => {
+    const {data:c} = await sb.from("clients").select("points").eq("id",cid).single();
+    if(!c||c.points<reward.points_cost) return {error:{message:"Pontos insuficientes"}};
+    const {data:tx,error} = await sb.from("transactions").insert({
+      store_id:sid, client_id:cid, reward_id:reward.id,
+      type:"redeem", points:-reward.points_cost, note:"Resgate: "+reward.name
+    }).select().single();
+    if(error) return {error};
+    await sb.from("clients").update({points:c.points-reward.points_cost}).eq("id",cid);
+    return {data:tx};
+  },
+
+  listRewards: (sid) => sb.from("rewards").select("*").eq("store_id",sid).order("points_cost"),
+  createReward:(sid,d)=> sb.from("rewards").insert({store_id:sid,...d}).select().single(),
+  toggleReward:(id,active)=> sb.from("rewards").update({active}).eq("id",id),
+
+  clientByToken:(token)=> sb.from("clients").select("*,stores(name,slug,settings)").eq("magic_token",token).maybeSingle(),
+};
+
+const waLink = (phone,msg) => {
+  const n = phone.replace(/\D/g,"");
+  return `https://wa.me/${n.startsWith("55")?n:"55"+n}?text=${encodeURIComponent(msg)}`;
+};
+const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+const fmtPts  = (n)   => Number(n||0).toLocaleString("pt-BR");
+
+// ── COMPONENTES BASE ─────────────────────────────────────────────────────────
+function Logo({size=32,dark=false}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="20" fill="#7c3aed"/>
+        <circle cx="20" cy="20" r="14" fill="#6b21a8"/>
+        <path d="M14 20 C14 14 20 11 20 11 C20 11 26 14 26 20 C26 26 20 30 20 30 C20 30 14 26 14 20Z" fill="#a855f7"/>
+        <circle cx="20" cy="20" r="5" fill="#c084fc"/>
+        <circle cx="20" cy="18" r="2" fill="#f5f0ff" opacity="0.6"/>
+      </svg>
+      <div>
+        <div style={{fontFamily:"Georgia,serif",fontWeight:700,fontSize:size*0.55,color:dark?C.r400:C.white,lineHeight:1}}>
+          Roxo<span style={{color:dark?C.r300:C.r200}}>Club</span>
+        </div>
+        {size>24&&<div style={{fontSize:9,color:dark?C.r300:C.r200,letterSpacing:2,textTransform:"uppercase"}}>Fidelidade</div>}
+      </div>
+    </div>
+  );
+}
+
+const Spinner = () => (
+  <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:48}}>
+    <div style={{width:32,height:32,border:`3px solid ${C.r100}`,borderTopColor:C.r400,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+  </div>
+);
+
+function Toast({msg,type="success"}) {
+  const bg = type==="error"?C.red:type==="warn"?C.gold:C.r400;
+  return (
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:999,background:bg,color:C.white,padding:"14px 20px",borderRadius:14,fontWeight:600,fontSize:14,boxShadow:"0 8px 30px rgba(0,0,0,0.3)",maxWidth:340,animation:"fadeUp 0.3s ease"}}>
+      {msg}
+    </div>
+  );
+}
+
+function Modal({title,onClose,children}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:C.white,borderRadius:20,padding:28,width:"100%",maxWidth:460,boxShadow:"0 24px 80px rgba(0,0,0,0.3)",animation:"modalIn 0.2s ease"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h3 style={{margin:0,fontSize:17,fontWeight:700,color:C.g900}}>{title}</h3>
+          <button onClick={onClose} style={{background:C.g100,border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:15,color:C.g600}}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Input({label,error,...props}) {
+  return (
+    <div style={{marginBottom:14}}>
+      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
+      <input {...props} style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${error?C.red:C.g200}`,fontSize:14,outline:"none",boxSizing:"border-box",...props.style}}/>
+      {error&&<div style={{color:C.red,fontSize:12,marginTop:4}}>{error}</div>}
+    </div>
+  );
+}
+
+function Btn({children,variant="primary",loading,full,sm,onClick,style={}}) {
+  const vs = {
+    primary:{background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,boxShadow:`0 4px 14px ${C.r400}44`},
+    secondary:{background:C.r50,color:C.r500,border:`1px solid ${C.r100}`},
+    ghost:{background:"transparent",color:C.g600,border:`1px solid ${C.g200}`},
+    danger:{background:C.redL,color:C.red},
+    green:{background:C.greenL,color:"#065f46"},
+    dark:{background:C.r900,color:C.white},
+  };
+  return (
+    <button onClick={onClick} disabled={loading}
+      style={{padding:sm?"7px 14px":"11px 20px",borderRadius:10,border:"none",fontWeight:600,fontSize:sm?12:14,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6,width:full?"100%":"auto",justifyContent:full?"center":"flex-start",opacity:loading?0.65:1,...vs[variant],...style}}>
+      {loading&&<span style={{width:13,height:13,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
+      {children}
+    </button>
+  );
+}
+
+function Badge({level}) {
+  const vip = level==="vip"||level==="VIP";
+  return <span style={{padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:vip?C.goldL:C.r50,color:vip?"#92400e":C.r500}}>{vip?"⭐ VIP":"Básico"}</span>;
+}
+
+function StatCard({icon,label,value,sub,accent=C.r400}) {
+  return (
+    <div style={{background:C.white,borderRadius:16,padding:"18px 22px",border:`1px solid ${C.g100}`,flex:1,minWidth:0,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontSize:11,color:C.g600,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6,marginBottom:5}}>{label}</div>
+          <div style={{fontSize:26,fontWeight:700,color:C.g900,lineHeight:1,fontFamily:"Georgia,serif"}}>{value}</div>
+          {sub&&<div style={{fontSize:12,color:C.green,marginTop:4,fontWeight:500}}>{sub}</div>}
+        </div>
+        <div style={{width:42,height:42,borderRadius:11,background:accent+"1a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── TELA DE AUTH ─────────────────────────────────────────────────────────────
+function AuthScreen({onAuth}) {
+  const [mode,setMode] = useState("login");
+  const [email,setEmail] = useState("");
+  const [pwd,setPwd]     = useState("");
+  const [err,setErr]     = useState("");
+  const [loading,setLoading] = useState(false);
+
+  const submit = async () => {
+    setErr(""); setLoading(true);
+    const {data,error} = mode==="login"
+      ? await api.signIn(email,pwd)
+      : await api.signUp(email,pwd);
+    setLoading(false);
+    if(error){setErr(error.message);return;}
+    if(mode==="signup"&&!data.session){setErr("✅ Confirme seu e-mail para continuar!");return;}
+    onAuth(data.session||data.user);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:400,animation:"slideIn 0.4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <Logo size={52}/>
+          <p style={{color:C.r200,fontSize:14,marginTop:12}}>{mode==="login"?"Entre na sua conta de lojista":"Crie sua conta gratuitamente"}</p>
+        </div>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:20,padding:28,border:"1px solid rgba(255,255,255,0.08)"}}>
+          <Input label="E-mail" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com"
+            style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          <Input label="Senha" type="password" value={pwd} onChange={e=>setPwd(e.target.value)} placeholder="••••••••"
+            onKeyDown={e=>e.key==="Enter"&&submit()}
+            style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          {err&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:10,background:err.startsWith("✅")?"#d1fae520":"#fee2e220",color:err.startsWith("✅")?C.green:C.red,fontSize:13}}>{err}</div>}
+          <Btn full loading={loading} onClick={submit}>{mode==="login"?"Entrar":"Criar conta"}</Btn>
+          <div style={{textAlign:"center",marginTop:18,color:"rgba(255,255,255,0.4)",fontSize:13}}>
+            {mode==="login"?"Não tem conta? ":"Já tem conta? "}
+            <span onClick={()=>{setMode(mode==="login"?"signup":"login");setErr("");}} style={{color:C.r200,cursor:"pointer",fontWeight:600}}>
+              {mode==="login"?"Cadastre-se":"Entrar"}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ONBOARDING ────────────────────────────────────────────────────────────────
+function OnboardingScreen({user,onDone}) {
+  const [name,setName]   = useState("");
+  const [phone,setPhone] = useState("");
+  const [loading,setLoad]= useState(false);
+  const [err,setErr]     = useState("");
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+
+  const create = async () => {
+    if(!name.trim()){setErr("Nome da loja é obrigatório");return;}
+    setLoad(true);
+    const {data,error} = await api.createStore(user.id,name.trim(),slug||"loja-"+Date.now(),phone.trim());
+    setLoad(false);
+    if(error){setErr(error.message);return;}
+    onDone(data);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:440,animation:"slideIn 0.4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <Logo size={44}/>
+          <h2 style={{color:C.white,fontFamily:"Georgia,serif",fontSize:22,margin:"14px 0 6px"}}>Bem-vindo! 🎉</h2>
+          <p style={{color:C.r200,fontSize:14}}>Configure sua loja para começar</p>
+        </div>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:20,padding:28,border:"1px solid rgba(255,255,255,0.08)"}}>
+          <Input label="Nome da loja *" value={name} onChange={e=>setName(e.target.value)} placeholder="Ex: Açaíteria do João"
+            style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          {name&&<div style={{marginTop:-10,marginBottom:14,fontSize:12,color:C.r200}}>🔗 /{slug}</div>}
+          <Input label="WhatsApp da loja" type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="11999887766"
+            style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          {err&&<div style={{marginBottom:14,padding:"10px 14px",borderRadius:10,background:"#fee2e220",color:C.red,fontSize:13}}>{err}</div>}
+          <Btn full loading={loading} onClick={create}>Criar minha loja →</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PAINEL DO LOJISTA ─────────────────────────────────────────────────────────
+function AdminPanel({user,store,onSignOut}) {
+  const [tab,setTab]       = useState("dashboard");
+  const [clients,setClients]   = useState([]);
+  const [txs,setTxs]       = useState([]);
+  const [rewards,setRewards]   = useState([]);
+  const [loading,setLoading]   = useState(true);
+  const [toast,setToast]   = useState(null);
+  const [modal,setModal]   = useState(null);
+  const [selClient,setSel] = useState(null);
+  const [searchQ,setSearch]= useState("");
+  const [clientForm,setCF] = useState({name:"",phone:"",email:""});
+  const [pointsForm,setPF] = useState({value:"",note:""});
+  const [rewardForm,setRF] = useState({name:"",points_cost:"",type:"product",description:""});
+  const [settings,setSettings] = useState(store.settings||{points_per_real:3});
+  const [savingSett,setSavingSett] = useState(false);
+
+  const showToast = (msg,type="success") => {setToast({msg,type});setTimeout(()=>setToast(null),3500);};
+
+  const load = useCallback(async()=>{
+    setLoading(true);
+    const [c,t,r] = await Promise.all([
+      api.listClients(store.id),
+      api.listTx(store.id),
+      api.listRewards(store.id),
+    ]);
+    setClients(c.data||[]);
+    setTxs(t.data||[]);
+    setRewards(r.data||[]);
+    setLoading(false);
+  },[store.id]);
+
+  useEffect(()=>{load();},[load]);
+
+  const filtered = clients.filter(c=>
+    c.name.toLowerCase().includes(searchQ.toLowerCase())||c.phone.includes(searchQ)
+  );
+
+  const totalPts = clients.reduce((a,c)=>a+(c.points||0),0);
+  const vipCount = clients.filter(c=>c.level==="vip").length;
+  const todayEarn= txs.filter(t=>t.type==="earn"&&t.created_at?.startsWith(new Date().toISOString().slice(0,10))).reduce((a,t)=>a+t.points,0);
+  const redeemCount = txs.filter(t=>t.type==="redeem").length;
+
+  const handleAddClient = async()=>{
+    if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
+    const {data,error}=await api.createClient(store.id,clientForm);
+    if(error){showToast(error.message,"error");return;}
+    setClients(p=>[data,...p]);
+    setCF({name:"",phone:"",email:""});
+    setModal(null);
+    showToast("✅ Cliente cadastrado!");
+  };
+
+  const handleAddPoints = async()=>{
+    if(!pointsForm.value||parseFloat(pointsForm.value)<=0){showToast("Informe o valor da compra","error");return;}
+    const {data,error}=await api.addPoints(store.id,selClient.id,parseFloat(pointsForm.value),pointsForm.note,settings);
+    if(error){showToast(error.message,"error");return;}
+    const pts=data?.pts||0;
+    const waMsg=(settings.whatsapp_message||"Olá {nome}! Você ganhou {pontos} pontos 💜 Saldo: {saldo} pts.")
+      .replace("{nome}",selClient.name.split(" ")[0])
+      .replace("{pontos}",pts)
+      .replace("{saldo}",(selClient.points||0)+pts);
+    await load();
+    setModal(null);
+    setPF({value:"",note:""});
+    showToast(`⭐ ${pts} pontos adicionados!`);
+    setTimeout(()=>window.open(waLink(selClient.phone,waMsg),"_blank"),800);
+  };
+
+  const handleAddReward = async()=>{
+    if(!rewardForm.name||!rewardForm.points_cost){showToast("Preencha nome e pontos","error");return;}
+    const {data,error}=await api.createReward(store.id,{...rewardForm,points_cost:parseInt(rewardForm.points_cost)});
+    if(error){showToast(error.message,"error");return;}
+    setRewards(p=>[...p,data]);
+    setRF({name:"",points_cost:"",type:"product",description:""});
+    setModal(null);
+    showToast("🎁 Recompensa criada!");
+  };
+
+  const handleToggle = async(r)=>{
+    await api.toggleReward(r.id,!r.active);
+    setRewards(p=>p.map(rr=>rr.id===r.id?{...rr,active:!rr.active}:rr));
+  };
+
+  const handleSaveSettings = async()=>{
+    setSavingSett(true);
+    await api.updateSettings(store.id,settings);
+    setSavingSett(false);
+    showToast("✅ Configurações salvas!");
+  };
+
+  const tabs=[
+    {id:"dashboard",icon:"📊",label:"Dashboard"},
+    {id:"clients",  icon:"👥",label:"Clientes"},
+    {id:"history",  icon:"📋",label:"Histórico"},
+    {id:"rewards",  icon:"🎁",label:"Recompensas"},
+    {id:"settings", icon:"⚙️",label:"Configurações"},
+  ];
+
+  return (
+    <div style={{display:"flex",minHeight:"100vh",background:C.g50}}>
+      {/* Sidebar */}
+      <div style={{width:210,background:C.r900,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:"22px 18px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+          <Logo size={28}/>
+        </div>
+        <nav style={{flex:1,padding:"8px 0"}}>
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{width:"100%",padding:"11px 18px",background:tab===t.id?"rgba(124,58,237,0.35)":"transparent",border:"none",borderLeft:tab===t.id?`3px solid ${C.r300}`:"3px solid transparent",color:tab===t.id?C.white:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,textAlign:"left"}}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </nav>
+        <div style={{padding:12,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:8,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{store.name}</div>
+          <button onClick={onSignOut} style={{width:"100%",padding:"7px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"transparent",color:"rgba(255,255,255,0.45)",fontSize:12,cursor:"pointer"}}>Sair</button>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{background:C.white,borderBottom:`1px solid ${C.g100}`,padding:"13px 24px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h1 style={{margin:0,fontSize:17,fontWeight:700,color:C.g900}}>{tabs.find(t=>t.id===tab)?.icon} {tabs.find(t=>t.id===tab)?.label}</h1>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <span style={{fontSize:12,color:C.g600}}>{user.email}</span>
+            <div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${C.r500},${C.r300})`,display:"flex",alignItems:"center",justifyContent:"center",color:C.white,fontWeight:700,fontSize:13}}>
+              {(user.email||"?")[0].toUpperCase()}
+            </div>
+          </div>
+        </div>
+
+        <div style={{flex:1,overflow:"auto",padding:24}}>
+          {loading?<Spinner/>:<>
+
+            {/* DASHBOARD */}
+            {tab==="dashboard"&&(
+              <div>
+                <div style={{display:"flex",gap:14,marginBottom:22,flexWrap:"wrap"}}>
+                  <StatCard icon="👥" label="Clientes"       value={clients.length}    sub={`${vipCount} VIPs`}       accent={C.r400}/>
+                  <StatCard icon="⭐" label="Pontos emitidos" value={fmtPts(totalPts)} sub="Total acumulado"          accent={C.gold}/>
+                  <StatCard icon="🎁" label="Resgates"        value={redeemCount}      sub="Histórico total"          accent={C.green}/>
+                  <StatCard icon="💰" label="Pts hoje"         value={fmtPts(todayEarn)}                              accent={C.r300}/>
+                </div>
+                <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:18,padding:"20px 24px",marginBottom:22,display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{color:C.r100,fontSize:12,marginBottom:3}}>Ação rápida</div>
+                    <div style={{color:C.white,fontSize:18,fontWeight:700}}>Registrar pontos por compra</div>
+                    <div style={{color:C.r200,fontSize:13,marginTop:2}}>Selecione o cliente e informe o valor da compra</div>
+                  </div>
+                  <Btn variant="dark" onClick={()=>setTab("clients")} style={{background:"rgba(255,255,255,0.15)",color:C.white,border:"1px solid rgba(255,255,255,0.2)",flexShrink:0}}>
+                    👥 Ver clientes →
+                  </Btn>
+                </div>
+                <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.g100}`}}>
+                  <div style={{padding:"13px 18px",borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.g900}}>📋 Últimas transações</div>
+                  {txs.length===0&&<div style={{padding:32,textAlign:"center",color:C.g400,fontSize:14}}>Nenhuma transação ainda</div>}
+                  {txs.slice(0,6).map(t=>(
+                    <div key={t.id} style={{padding:"12px 18px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{display:"flex",gap:11,alignItems:"center"}}>
+                        <div style={{width:34,height:34,borderRadius:9,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{t.type==="earn"?"⬆️":"🎁"}</div>
+                        <div>
+                          <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"—"}</div>
+                          <div style={{fontSize:11,color:C.g600}}>{t.note||"Sem descrição"} · {fmtDate(t.created_at)}</div>
+                        </div>
+                      </div>
+                      <span style={{fontWeight:700,fontSize:15,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":""}{t.points} pts</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* CLIENTS */}
+            {tab==="clients"&&(
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:16,gap:10,flexWrap:"wrap"}}>
+                  <input value={searchQ} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Buscar nome ou telefone…"
+                    style={{padding:"9px 15px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",flex:1,minWidth:200}}/>
+                  <Btn onClick={()=>setModal("addClient")}>➕ Novo cliente</Btn>
+                </div>
+                <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.g100}`,overflow:"auto"}}>
+                  {filtered.length===0
+                    ?<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhum cliente encontrado</div>
+                    :<table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+                      <thead>
+                        <tr style={{background:C.g50}}>
+                          {["Cliente","Telefone","Pontos","Nível","Visitas","Última visita",""].map(h=>(
+                            <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(c=>(
+                          <tr key={c.id} style={{borderTop:`1px solid ${C.g100}`}}>
+                            <td style={{padding:"12px 14px"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:9}}>
+                                <div style={{width:32,height:32,borderRadius:"50%",background:C.r50,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.r500,fontSize:13,flexShrink:0}}>{c.name[0]}</div>
+                                <div>
+                                  <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{c.name}</div>
+                                  <div style={{fontSize:11,color:C.g600}}>{c.email||"—"}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{padding:"12px 14px",fontSize:13}}>
+                              <a href={waLink(c.phone,"Olá! 😊")} target="_blank" style={{color:C.green,fontWeight:500}}>📱 {c.phone}</a>
+                            </td>
+                            <td style={{padding:"12px 14px",fontWeight:700,color:C.r500,fontSize:15}}>{fmtPts(c.points)}</td>
+                            <td style={{padding:"12px 14px"}}><Badge level={c.level}/></td>
+                            <td style={{padding:"12px 14px",fontSize:13,color:C.g700}}>{c.total_visits}x</td>
+                            <td style={{padding:"12px 14px",fontSize:13,color:C.g700}}>{fmtDate(c.last_visit)}</td>
+                            <td style={{padding:"12px 14px"}}>
+                              <div style={{display:"flex",gap:6}}>
+                                <Btn sm variant="secondary" onClick={()=>{setSel(c);setModal("addPoints");}}>⭐ Pontuar</Btn>
+                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone,`Olá ${c.name.split(" ")[0]}! Seu saldo RoxoClub: ${fmtPts(c.points)} pts 💜`),"_blank")}>💬</Btn>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* HISTORY */}
+            {tab==="history"&&(
+              <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.g100}`,overflow:"hidden"}}>
+                <div style={{padding:"13px 18px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontWeight:700,color:C.g900}}>Todas as transações</span>
+                  <span style={{fontSize:13,color:C.g600}}>{txs.length} registros</span>
+                </div>
+                {txs.length===0&&<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhuma transação ainda</div>}
+                {txs.map(t=>(
+                  <div key={t.id} style={{padding:"13px 18px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",gap:11,alignItems:"center"}}>
+                      <div style={{width:36,height:36,borderRadius:10,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>{t.type==="earn"?"⬆️":"🎁"}</div>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"Cliente"}</div>
+                        <div style={{fontSize:12,color:C.g600}}>{t.note||"—"}</div>
+                        <div style={{fontSize:11,color:C.g400}}>{fmtDate(t.created_at)}{t.amount_paid?` · R$ ${Number(t.amount_paid).toFixed(2)}`:""}</div>
+                      </div>
+                    </div>
+                    <span style={{fontWeight:700,fontSize:15,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":""}{t.points} pts</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* REWARDS */}
+            {tab==="rewards"&&(
+              <div>
+                <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
+                  <Btn onClick={()=>setModal("addReward")}>🎁 Nova recompensa</Btn>
+                </div>
+                {rewards.length===0&&<div style={{background:C.white,borderRadius:16,padding:40,textAlign:"center",border:`1px solid ${C.g100}`,color:C.g400}}>Nenhuma recompensa criada</div>}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:14}}>
+                  {rewards.map(r=>(
+                    <div key={r.id} style={{background:C.white,borderRadius:16,border:`1px solid ${C.g100}`,padding:18,opacity:r.active?1:0.55}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                        <span style={{fontSize:26}}>{r.type==="product"?"🍇":"💸"}</span>
+                        <span style={{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:r.active?C.greenL:C.g100,color:r.active?"#065f46":C.g600}}>{r.active?"Ativo":"Inativo"}</span>
+                      </div>
+                      <div style={{fontWeight:700,fontSize:14,color:C.g900,marginBottom:3}}>{r.name}</div>
+                      {r.description&&<div style={{fontSize:12,color:C.g600,marginBottom:6}}>{r.description}</div>}
+                      <div style={{color:C.r500,fontWeight:700,fontSize:17,marginBottom:12}}>{fmtPts(r.points_cost)} pts</div>
+                      <Btn sm variant={r.active?"danger":"green"} full onClick={()=>handleToggle(r)} style={{justifyContent:"center"}}>
+                        {r.active?"Desativar":"Ativar"}
+                      </Btn>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SETTINGS */}
+            {tab==="settings"&&(
+              <div style={{maxWidth:520}}>
+                <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.g100}`,padding:22,marginBottom:14}}>
+                  <h3 style={{margin:"0 0 16px",color:C.g900,fontSize:15}}>⭐ Regras de pontuação</h3>
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:130}}>
+                      <Input label="Pontos por R$1,00" type="number" value={settings.points_per_real||3}
+                        onChange={e=>setSettings({...settings,points_per_real:Number(e.target.value)})}/>
+                    </div>
+                    <div style={{flex:1,minWidth:130}}>
+                      <Input label="Compra mínima (R$)" type="number" value={settings.min_purchase||10}
+                        onChange={e=>setSettings({...settings,min_purchase:Number(e.target.value)})}/>
+                    </div>
+                  </div>
+                  <div style={{padding:"11px 14px",background:C.r50,borderRadius:10,fontSize:13,color:C.r500}}>
+                    💡 Compra de R$30 = <strong>{Math.floor(30*(settings.points_per_real||3))} pontos</strong>
+                  </div>
+                </div>
+                <div style={{background:C.white,borderRadius:16,border:`1px solid ${C.g100}`,padding:22,marginBottom:14}}>
+                  <h3 style={{margin:"0 0 14px",color:C.g900,fontSize:15}}>📱 Mensagem WhatsApp</h3>
+                  <div style={{marginBottom:6,fontSize:12,fontWeight:600,color:C.g700,textTransform:"uppercase",letterSpacing:0.5}}>Template (use {"{nome}"}, {"{pontos}"}, {"{saldo}"})</div>
+                  <textarea rows={3} value={settings.whatsapp_message||""} onChange={e=>setSettings({...settings,whatsapp_message:e.target.value})}
+                    style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:13,outline:"none",resize:"vertical",boxSizing:"border-box"}}/>
+                </div>
+                <Btn loading={savingSett} onClick={handleSaveSettings}>💾 Salvar configurações</Btn>
+              </div>
+            )}
+          </>}
+        </div>
+      </div>
+
+      {/* MODAIS */}
+      {modal==="addClient"&&(
+        <Modal title="➕ Novo cliente" onClose={()=>setModal(null)}>
+          <Input label="Nome completo *" value={clientForm.name} onChange={e=>setCF({...clientForm,name:e.target.value})} placeholder="Ana Beatriz Santos"/>
+          <Input label="Telefone (WhatsApp) *" type="tel" value={clientForm.phone} onChange={e=>setCF({...clientForm,phone:e.target.value})} placeholder="11999887766"/>
+          <Input label="E-mail (opcional)" type="email" value={clientForm.email} onChange={e=>setCF({...clientForm,email:e.target.value})} placeholder="ana@email.com"/>
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={handleAddClient}>Cadastrar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal==="addPoints"&&selClient&&(
+        <Modal title={`⭐ Pontuar — ${selClient.name}`} onClose={()=>setModal(null)}>
+          <div style={{padding:"11px 14px",background:C.r50,borderRadius:10,marginBottom:14,display:"flex",justifyContent:"space-between"}}>
+            <span style={{color:C.r600,fontSize:14}}>Saldo atual</span>
+            <span style={{fontWeight:700,color:C.r500,fontSize:16}}>{fmtPts(selClient.points)} pts</span>
+          </div>
+          <Input label="Valor da compra (R$) *" type="number" value={pointsForm.value} onChange={e=>setPF({...pointsForm,value:e.target.value})} placeholder="Ex: 35.90"/>
+          {pointsForm.value>0&&(
+            <div style={{marginTop:-8,marginBottom:12,padding:"8px 12px",background:C.greenL,borderRadius:8,fontSize:13,color:"#065f46"}}>
+              Serão adicionados: <strong>{Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))} pontos</strong>
+            </div>
+          )}
+          <Input label="Descrição" value={pointsForm.note} onChange={e=>setPF({...pointsForm,note:e.target.value})} placeholder="Ex: Açaí 500ml + granola"/>
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={handleAddPoints}>Confirmar + WhatsApp</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal==="addReward"&&(
+        <Modal title="🎁 Nova recompensa" onClose={()=>setModal(null)}>
+          <Input label="Nome *" value={rewardForm.name} onChange={e=>setRF({...rewardForm,name:e.target.value})} placeholder="Ex: Açaí 300ml Grátis"/>
+          <Input label="Custo em pontos *" type="number" value={rewardForm.points_cost} onChange={e=>setRF({...rewardForm,points_cost:e.target.value})} placeholder="500"/>
+          <Input label="Descrição (opcional)" value={rewardForm.description} onChange={e=>setRF({...rewardForm,description:e.target.value})} placeholder="Detalhes da recompensa"/>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Tipo</label>
+            <select value={rewardForm.type} onChange={e=>setRF({...rewardForm,type:e.target.value})}
+              style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",background:C.white}}>
+              <option value="product">🍇 Produto grátis</option>
+              <option value="discount">💸 Desconto em reais</option>
+              <option value="free_item">🎁 Item especial</option>
+            </select>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={handleAddReward}>Criar recompensa</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {toast&&<Toast {...toast}/>}
+    </div>
+  );
+}
+
+// ── APP ROOT ──────────────────────────────────────────────────────────────────
+function App() {
+  const [session,setSession] = useState(undefined);
+  const [store,setStore]     = useState(null);
+  const [view,setView]       = useState("loading");
+
+  useEffect(()=>{
+    api.getSession().then(({data})=>{
+      const s=data?.session;
+      setSession(s||null);
+      if(!s){setView("auth");return;}
+      api.getStore(s.user.id).then(({data:st})=>{
+        if(!st){setView("onboarding");return;}
+        setStore(st);setView("admin");
+      });
+    });
+    const {data:{subscription}}=sb.auth.onAuthStateChange((event,s)=>{
+      setSession(s);
+      if(!s){setStore(null);setView("auth");}
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  const handleAuth = async(sessionOrUser)=>{
+    const uid=sessionOrUser?.user?.id||sessionOrUser?.id;
+    const {data:st}=await api.getStore(uid);
+    if(!st){setView("onboarding");return;}
+    setStore(st);setView("admin");
+  };
+
+  const handleSignOut = async()=>{
+    await api.signOut();
+    setSession(null);setStore(null);setView("auth");
+  };
+
+  if(view==="loading") return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <Spinner/>
+    </div>
+  );
+  if(view==="auth")        return <AuthScreen onAuth={handleAuth}/>;
+  if(view==="onboarding"&&session) return <OnboardingScreen user={session.user} onDone={st=>{setStore(st);setView("admin");}}/>;
+  if(view==="admin"&&session&&store) return <AdminPanel user={session.user} store={store} onSignOut={handleSignOut}/>;
+  return <AuthScreen onAuth={handleAuth}/>;
+}
+
+ReactDOM.render(<App/>, document.getElementById("root"));
+</script>
+</body>
+</html>
