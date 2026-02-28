@@ -2,7 +2,15 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="theme-color" content="#0f0820"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="RoxoClub"/>
+<meta name="description" content="RoxoClub — Sistema de fidelidade para açaíterias"/>
+<meta property="og:title" content="RoxoClub Fidelidade"/>
+<meta property="og:description" content="Seus pontos e recompensas em um clique"/>
+<meta property="og:type" content="website"/>
 <title>RoxoClub — Fidelidade</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -42,7 +50,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ══ CORES ════════════════════════════════════════════════════════════════════
 const C = {
-  r900:"#120820",r800:"#1e0d38",r700:"#2d1155",r600:"#4a1a7a",
+  r900:"#0f0820",r800:"#1e0d38",r700:"#2d1155",r600:"#4a1a7a",
   r500:"#6b21a8",r400:"#7c3aed",r300:"#a855f7",r200:"#c084fc",r100:"#e9d5ff",r50:"#f5f0ff",
   gold:"#f59e0b",goldL:"#fef3c7",gold2:"#d97706",
   green:"#10b981",greenL:"#d1fae5",
@@ -671,7 +679,7 @@ function AdminPanel({user,store,onSignOut}) {
   const [selected,setSelected]=useState(new Set());
   const [clientForm,setCF]=useState({name:"",phone:"",email:"",dob:""});
   const [pointsForm,setPF]=useState({value:"",note:""});
-  const [rewardForm,setRF]=useState({name:"",points_cost:"",type:"product",description:""});
+  const [rewardForm,setRF]=useState({name:"",points_cost:"",type:"product",description:"",tag:""});
   const [settings,setSettings]=useState(store.settings||DEFAULT_SETTINGS);
   const [savingSett,setSavingSett]=useState(false);
   const [showCampaign,setShowCampaign]=useState(false);
@@ -708,14 +716,14 @@ function AdminPanel({user,store,onSignOut}) {
 
   const handleAddClient=async()=>{
     if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
-    const {data,error}=await api.createClient(store.id,clientForm);
+    const {data,error}=await api.createClient(store.id,{...clientForm,phone:rawPhone(clientForm.phone)});
     if(error){showToast(error.message,"error");return;}
     setClients(p=>[data,...p]);
     // Verificar cadastro incompleto e oferecer bônus
     if(!clientForm.email||!clientForm.dob){
       const bonusPts=settings.bonus_complete_points||50;
       const completeMsg=(settings.msg_complete||DEFAULT_SETTINGS.msg_complete)
-        .replace("{nome}",data.name.split(" ")[0]).replace("{link}",magicLink(data.magic_token));
+        .replace(/\{nome\}/g,data.name.split(" ")[0]).replace(/\{link\}/g,magicLink(data.magic_token)).replace(/\{bonus\}/g,String(bonusPts)).replace(/\{loja\}/g,store.name);
       setTimeout(()=>window.open(waLink(data.phone,completeMsg),"_blank"),500);
     }
     setCF({name:"",phone:"",email:"",dob:""});
@@ -733,12 +741,12 @@ function AdminPanel({user,store,onSignOut}) {
     const levelName=getLevelInfo(newLevel,settings.levels||DEFAULT_SETTINGS.levels).name;
     // Mensagem automática WhatsApp com link mágico
     const waMsg=(settings.msg_points||DEFAULT_SETTINGS.msg_points)
-      .replace("{nome}",selClient.name.split(" ")[0])
-      .replace("{pontos}",fmtPts(pts))
-      .replace("{saldo}",fmtPts(newPts))
-      .replace("{nivel}",levelName)
-      .replace("{link}",magicLink(selClient.magic_token))
-      .replace("{loja}",store.name);
+      .replace(/\{nome\}/g,selClient.name.split(" ")[0])
+      .replace(/\{pontos\}/g,fmtPts(pts))
+      .replace(/\{saldo\}/g,fmtPts(newPts))
+      .replace(/\{nivel\}/g,levelName)
+      .replace(/\{link\}/g,magicLink(selClient.magic_token))
+      .replace(/\{loja\}/g,store.name);
     await load();
     setModal(null);setPF({value:"",note:""});
     // Celebração visual com confete!
@@ -762,14 +770,17 @@ function AdminPanel({user,store,onSignOut}) {
 
   const sendBirthday=(c)=>{
     const msg=(settings.msg_birthday||DEFAULT_SETTINGS.msg_birthday)
-      .replace("{nome}",c.name.split(" ")[0]).replace("{brinde}",settings.birthday_gift||"brinde especial")
-      .replace("{link}",magicLink(c.magic_token)).replace("{loja}",store.name);
+      .replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
+      .replace(/\{link\}/g,magicLink(c.magic_token)).replace(/\{loja\}/g,store.name);
     window.open(waLink(c.phone,msg),"_blank");
   };
 
   const sendIncomplete=(c)=>{
     const msg=(settings.msg_complete||DEFAULT_SETTINGS.msg_complete)
-      .replace("{nome}",c.name.split(" ")[0]).replace("{link}",magicLink(c.magic_token));
+      .replace(/\{nome\}/g,c.name.split(" ")[0])
+      .replace(/\{link\}/g,magicLink(c.magic_token))
+      .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))
+      .replace(/\{loja\}/g,store.name);
     window.open(waLink(c.phone,msg),"_blank");
   };
 
@@ -781,8 +792,9 @@ function AdminPanel({user,store,onSignOut}) {
     if(!sel.length){showToast("Nenhum cliente selecionado","error");return;}
     sel.forEach((c,i)=>setTimeout(()=>{
       const msg=(template||settings.msg_custom||"Olá {nome}! 💜")
-        .replace("{nome}",c.name.split(" ")[0]).replace("{saldo}",fmtPts(c.points))
-        .replace("{link}",magicLink(c.magic_token)).replace("{loja}",store.name);
+        .replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points))
+        .replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name)
+        .replace(/\{link\}/g,magicLink(c.magic_token)).replace(/\{loja\}/g,store.name);
       window.open(waLink(c.phone,msg),"_blank");
     },i*800));
     showToast(`📤 Enviando para ${sel.length} clientes...`);
@@ -863,7 +875,7 @@ function AdminPanel({user,store,onSignOut}) {
                 );
               })()}
 
-              {/* Alertas */}}
+              {/* Alertas */}
               {birthdayCount>0&&(
                 <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #fcd34d"}}>
                   <div><div style={{fontWeight:700,color:"#92400e",fontSize:15}}>🎂 {birthdayCount} aniversariante{birthdayCount>1?"s":""} hoje!</div><div style={{fontSize:13,color:"#78350f",marginTop:2}}>Envie uma mensagem especial e fidelize ainda mais!</div></div>
@@ -962,7 +974,7 @@ function AdminPanel({user,store,onSignOut}) {
                             <td style={{padding:"11px 12px"}}>
                               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                                 <Btn sm variant="secondary" onClick={()=>{setSel(c);setModal("addPoints");}}>⭐</Btn>
-                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace("{nome}",c.name.split(" ")[0]).replace("{saldo}",fmtPts(c.points)).replace("{pontos}","").replace("{nivel}",getLevelInfo(c.level||"basico",settings.levels).name).replace("{link}",magicLink(c.magic_token)).replace("{loja}",store.name)),"_blank")} title="Enviar link mágico">🔗</Btn>
+                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points)).replace(/\{pontos\}/g,"").replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name).replace(/\{link\}/g,magicLink(c.magic_token||"")).replace(/\{loja\}/g,store.name)),"_blank")} title="Enviar link mágico">🔗</Btn>
                                 {isBday&&<Btn sm variant="gold" onClick={()=>sendBirthday(c)} title="Enviar parabéns">🎂</Btn>}
                                 {isIncomplete&&<Btn sm variant="blue" onClick={()=>sendIncomplete(c)} title="Pedir cadastro completo">⚠️</Btn>}
                               </div>
@@ -1193,7 +1205,7 @@ function AdminPanel({user,store,onSignOut}) {
             <LevelBadge levelKey={selClient.level||"basico"} levels={settings.levels}/>
           </div>
           <Input label="Valor da compra (R$) *" type="number" value={pointsForm.value} onChange={e=>setPF({...pointsForm,value:e.target.value})} placeholder="Ex: 35.90"/>
-          {pointsForm.value>0&&(
+          {parseFloat(pointsForm.value)>0&&(
             <div style={{marginTop:-9,marginBottom:11,padding:"8px 11px",background:C.greenL,borderRadius:8,fontSize:13,color:"#065f46"}}>
               Serão adicionados: <strong>{Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))} pontos</strong>
               <div style={{fontSize:11,marginTop:2}}>📱 WhatsApp será aberto automaticamente após confirmar</div>
@@ -1221,16 +1233,26 @@ function AdminPanel({user,store,onSignOut}) {
       {modal==="addReward"&&(
         <Modal title="🎁 Nova recompensa" onClose={()=>setModal(null)}>
           <Input label="Nome *" value={rewardForm.name} onChange={e=>setRF({...rewardForm,name:e.target.value})} placeholder="Ex: Açaí 300ml Grátis"/>
-          <Input label="Custo em pontos *" type="number" value={rewardForm.points_cost} onChange={e=>setRF({...rewardForm,points_cost:e.target.value})} placeholder="500"/>
-          <Input label="Descrição (opcional)" value={rewardForm.description} onChange={e=>setRF({...rewardForm,description:e.target.value})} placeholder="Detalhes"/>
+          <Input label="Custo em pontos *" type="number" value={rewardForm.points_cost} onChange={e=>setRF({...rewardForm,points_cost:e.target.value})} placeholder="Ex: 500"/>
+          <Input label="Descrição (opcional)" value={rewardForm.description} onChange={e=>setRF({...rewardForm,description:e.target.value})} placeholder="Detalhes adicionais"/>
           <div style={{display:"flex",gap:10}}>
             <div style={{flex:1}}>
               <Select label="Tipo" value={rewardForm.type} onChange={e=>setRF({...rewardForm,type:e.target.value})}>
-            <option value="product">🍇 Produto grátis</option>
-            <option value="discount">💸 Desconto em reais</option>
-            <option value="free_item">🎁 Item especial</option>
-          </Select>
-          <div style={{display:"flex",gap:10}}>
+                <option value="product">🍇 Produto grátis</option>
+                <option value="discount">💸 Desconto em reais</option>
+                <option value="free_item">🎁 Item especial</option>
+              </Select>
+            </div>
+            <div style={{flex:1}}>
+              <Select label="Tag destaque" value={rewardForm.tag||""} onChange={e=>setRF({...rewardForm,tag:e.target.value})}>
+                <option value="">Sem destaque</option>
+                <option value="hot">🔥 Mais popular</option>
+                <option value="best">💰 Melhor custo</option>
+                <option value="new">✨ Novo</option>
+              </Select>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:4}}>
             <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
             <Btn full onClick={handleAddReward}>Criar recompensa</Btn>
           </div>
@@ -1315,7 +1337,7 @@ function ClientPortal({token}) {
   const isIncomplete=!client.email||!client.dob;
   const bonusPts=settings.bonus_complete_points||50;
 
-  const clientTabs=[{id:"home",icon:"🏠"},{id:"rewards",icon:"🎁"},{id:"ranking",icon:"🏆"},{id:"history",icon:"📋"}];
+  const clientTabs=[{id:"home",icon:"🏠",label:"Início"},{id:"rewards",icon:"🎁",label:"Resgatar"},{id:"ranking",icon:"🏆",label:"Ranking"},{id:"history",icon:"📋",label:"Histórico"}];
 
   return (
     <div style={{minHeight:"100vh",background:C.r900,fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:480,margin:"0 auto"}}>
@@ -1356,8 +1378,9 @@ function ClientPortal({token}) {
       {/* Nav tabs */}
       <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
         {clientTabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"12px 0",background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${C.r300}`:"2px solid transparent",color:tab===t.id?C.r200:"rgba(255,255,255,0.35)",fontSize:18,cursor:"pointer"}}>
-            {t.icon}
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0",background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${C.r300}`:"2px solid transparent",color:tab===t.id?C.r200:"rgba(255,255,255,0.3)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+            <span style={{fontSize:18}}>{t.icon}</span>
+            <span style={{fontSize:10,fontWeight:tab===t.id?700:400}}>{t.label}</span>
           </button>
         ))}
       </div>
