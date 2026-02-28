@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RoxoClub — Fidelidade</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0820;-webkit-font-smoothing:antialiased}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes modalIn{from{opacity:0;transform:scale(0.93) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+@keyframes bounce{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+@keyframes confettiFall{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(230px) rotate(720deg);opacity:0}}
+@keyframes pulseGlow{0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,0.4)}50%{box-shadow:0 0 0 8px rgba(124,58,237,0)}}
+@keyframes levelUp{0%{transform:scale(0.5);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+@keyframes countUp{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#4a1a7a;border-radius:4px}
+input,select,textarea,button{font-family:'Segoe UI',system-ui,sans-serif}
+a{color:#a855f7;text-decoration:none}
+.hover-card{transition:transform 0.15s,box-shadow 0.15s;cursor:pointer}.hover-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.12)}
+.skeleton{background:linear-gradient(90deg,#f0f0f0 25%,#e5e5e5 50%,#f0f0f0 75%);background-size:400px 100%;animation:shimmer 1.4s infinite;border-radius:8px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useMemo,useRef} = React;
+const {createClient} = supabase;
+
+// ══ CONFIG ══════════════════════════════════════════════════════════════════
+const SUPABASE_URL      = "https://pwluhfvexuwrlrfihgoe.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3bHVoZnZleHV3cmxyZmloZ29lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNjQ1OTgsImV4cCI6MjA4NzY0MDU5OH0.pdDn8sezZWMWblvrqlqF1T00yDzKDIqpmDUZ1yAeZek";
+const APP_URL           = "https://roxo-club.vercel.app";
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ══ CORES ════════════════════════════════════════════════════════════════════
+const C = {
+  r900:"#120820",r800:"#1e0d38",r700:"#2d1155",r600:"#4a1a7a",
+  r500:"#6b21a8",r400:"#7c3aed",r300:"#a855f7",r200:"#c084fc",r100:"#e9d5ff",r50:"#f5f0ff",
+  gold:"#f59e0b",goldL:"#fef3c7",gold2:"#d97706",
+  green:"#10b981",greenL:"#d1fae5",
+  red:"#ef4444",redL:"#fee2e2",
+  blue:"#3b82f6",blueL:"#dbeafe",
+  white:"#fff",
+  g50:"#f9fafb",g100:"#f3f4f6",g200:"#e5e7eb",g300:"#d1d5db",
+  g400:"#9ca3af",g600:"#4b5563",g700:"#374151",g900:"#111827",
+};
+
+// ══ HELPERS ══════════════════════════════════════════════════════════════════
+const fmtDate  = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+const fmtPts   = (n)   => Number(n||0).toLocaleString("pt-BR");
+const today    = ()    => new Date().toISOString().split("T")[0];
+const daysDiff = (iso) => iso ? Math.floor((Date.now()-new Date(iso))/(86400000)) : 9999;
+const isBirthday = (dob) => {
+  if(!dob) return false;
+  const d=new Date(dob), now=new Date();
+  return d.getDate()===now.getDate() && d.getMonth()===now.getMonth();
+};
+const age = (dob) => {
+  if(!dob) return null;
+  const d=new Date(dob), now=new Date();
+  let a=now.getFullYear()-d.getFullYear();
+  if(now.getMonth()<d.getMonth()||(now.getMonth()===d.getMonth()&&now.getDate()<d.getDate())) a--;
+  return a;
+};
+const fmtPhone = (v) => { const d=v.replace(/\D/g,""); if(d.length<=2) return d; if(d.length<=6) return `(${d.slice(0,2)}) ${d.slice(2)}`; if(d.length<=10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`; return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`; };
+const rawPhone = (v) => v.replace(/\D/g,"");
+const waLink = (phone,msg) => {
+  const n=phone.replace(/\D/g,"");
+  return `https://wa.me/${n.startsWith("55")?n:"55"+n}?text=${encodeURIComponent(msg)}`;
+};
+const magicLink = (token) => `${APP_URL}/?token=${token}`;
+
+const DEFAULT_SETTINGS = {
+  points_per_real:3, min_purchase:10,
+  points_expire:false, expire_days:365,
+  // Níveis
+  levels:{
+    basico:{name:"Cliente",min:0,max:499,color:"#9ca3af",benefits:"Acesso ao programa de pontos"},
+    vip1:  {name:"VIP Bronze",min:500,max:999,color:"#b45309",benefits:"5% de desconto em todas as compras"},
+    vip2:  {name:"VIP Prata",min:1000,max:1999,color:"#6b7280",benefits:"10% de desconto + açaí grátis no aniversário"},
+    vip3:  {name:"VIP Ouro",min:2000,max:999999,color:"#d97706",benefits:"15% de desconto + brinde exclusivo + fila preferencial"},
+  },
+  ranking_period_months:3,
+  // Mensagens automáticas
+  msg_points:"Olá {nome}! 🍇 Você ganhou *{pontos} pontos* no RoxoClub!\nSaldo: *{saldo} pts* | Nível: {nivel}\n\n👉 Veja seus pontos: {link}",
+  msg_birthday:"🎂 Feliz aniversário, {nome}! A {loja} te manda um presente especial!\n\n🎁 {brinde}\n\nAproveite seu dia! 💜\n👉 {link}",
+  msg_inactive:"Sentimos sua falta, {nome}! 😢\nFaz {dias} dias que você não aparece na {loja}.\n\n🎁 Que tal voltar e ganhar *pontos em dobro* na sua próxima visita?\n👉 {link}",
+  msg_complete:"Olá {nome}! Complete seu cadastro no RoxoClub e *ganhe 50 pontos* de bônus! 🎉\n👉 {link}",
+  msg_ranking:"🏆 {nome}, você está em #{posicao} no ranking da {loja}!\nSeus pontos: *{saldo}*\nFaltam *{falta}* pts para alcançar o líder!\n👉 {link}",
+  msg_custom:"",
+  birthday_gift:"Açaí 300ml grátis 🍇",
+  inactive_days:30,
+  bonus_complete_points:50,
+};
+
+// ══ API ══════════════════════════════════════════════════════════════════════
+const api = {
+  signIn:  (e,p) => sb.auth.signInWithPassword({email:e,password:p}),
+  signUp:  (e,p) => sb.auth.signUp({email:e,password:p}),
+  signOut: ()    => sb.auth.signOut(),
+  getSession: () => sb.auth.getSession(),
+
+  getStore:    (uid)       => sb.from("stores").select("*").eq("owner_id",uid).maybeSingle(),
+  createStore: (uid,n,s,p) => sb.from("stores").insert({owner_id:uid,name:n,slug:s,phone:p,settings:DEFAULT_SETTINGS}).select().single(),
+  updateSettings:(id,set)  => sb.from("stores").update({settings:set}).eq("id",id),
+
+  listClients: (sid) => sb.from("clients").select("*").eq("store_id",sid).order("points",{ascending:false}),
+  createClient:(sid,d) => sb.from("clients").insert({store_id:sid,...d}).select().single(),
+  updateClient:(id,d)  => sb.from("clients").update(d).eq("id",id).select().single(),
+  deleteClient:(id)    => sb.from("clients").delete().eq("id",id),
+  clientByToken:(tok)  => sb.from("clients").select("*,stores(name,slug,settings,phone)").eq("magic_token",tok).maybeSingle(),
+
+  listTx:     (sid,lim=60) => sb.from("transactions").select("*,clients(name,phone)").eq("store_id",sid).order("created_at",{ascending:false}).limit(lim),
+  listClientTx:(cid)       => sb.from("transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(40),
+
+  addPoints: async (sid,cid,amount,note,settings) => {
+    const pts = Math.floor(amount*(settings.points_per_real||3));
+    const {data:tx,error} = await sb.from("transactions").insert({
+      store_id:sid,client_id:cid,type:"earn",points:pts,amount_paid:amount,note:note||null
+    }).select().single();
+    if(error) return {error};
+    const {data:c} = await sb.from("clients").select("points,total_visits").eq("id",cid).single();
+    const newPts = (c?.points||0)+pts;
+    const newLevel = getLevel(newPts,settings.levels||DEFAULT_SETTINGS.levels);
+    await sb.from("clients").update({points:newPts,total_visits:(c?.total_visits||0)+1,last_visit:new Date().toISOString(),level:newLevel}).eq("id",cid);
+    return {data:{...tx,pts,newPts}};
+  },
+
+  addBonusPoints: async (sid,cid,pts,note) => {
+    await sb.from("transactions").insert({store_id:sid,client_id:cid,type:"earn",points:pts,note:note||"Bônus"});
+    const {data:c} = await sb.from("clients").select("points").eq("id",cid).single();
+    const newPts=(c?.points||0)+pts;
+    await sb.from("clients").update({points:newPts}).eq("id",cid);
+    return newPts;
+  },
+
+  redeem: async (sid,cid,reward) => {
+    const {data:c} = await sb.from("clients").select("points").eq("id",cid).single();
+    if(!c||c.points<reward.points_cost) return {error:{message:"Pontos insuficientes"}};
+    const {data:tx,error} = await sb.from("transactions").insert({store_id:sid,client_id:cid,reward_id:reward.id,type:"redeem",points:-reward.points_cost,note:"Resgate: "+reward.name}).select().single();
+    if(error) return {error};
+    await sb.from("clients").update({points:c.points-reward.points_cost}).eq("id",cid);
+    return {data:tx};
+  },
+
+  listRewards: (sid) => sb.from("rewards").select("*").eq("store_id",sid).order("points_cost"),
+  createReward:(sid,d)=> sb.from("rewards").insert({store_id:sid,...d}).select().single(),
+  updateReward:(id,d) => sb.from("rewards").update(d).eq("id",id),
+  toggleReward:(id,a) => sb.from("rewards").update({active:a}).eq("id",id),
+  deleteReward:(id)   => sb.from("rewards").delete().eq("id",id),
+};
+
+// ══ LEVEL SYSTEM ═════════════════════════════════════════════════════════════
+function getLevel(pts, levels) {
+  const lvls = Object.entries(levels||DEFAULT_SETTINGS.levels).sort((a,b)=>b[1].min-a[1].min);
+  for(const [key,l] of lvls) { if(pts>=l.min) return key; }
+  return "basico";
+}
+function getLevelInfo(levelKey, levels) {
+  return (levels||DEFAULT_SETTINGS.levels)[levelKey] || DEFAULT_SETTINGS.levels.basico;
+}
+function getLevelBadge(levelKey, levels) {
+  const l = getLevelInfo(levelKey, levels);
+  const icons = {basico:"👤",vip1:"🥉",vip2:"🥈",vip3:"🏆"};
+  return {icon:icons[levelKey]||"👤", ...l};
+}
+
+
+function SkeletonLine({w="100%",h=14,mb=8}) {
+  return <div className="skeleton" style={{width:w,height:h,marginBottom:mb,display:"block"}}/>;
+}
+
+function WAPreview({msg,storeName}) {
+  if(!msg) return null;
+  const lines=msg.split("\n").map((l,i)=>{
+    const bold=l.replace(/\*(.*?)\*/g,"<strong>$1</strong>");
+    return <p key={i} style={{margin:"2px 0",fontSize:13,lineHeight:1.5}} dangerouslySetInnerHTML={{__html:bold||"&nbsp;"}}/>;
+  });
+  return (
+    <div style={{background:"#e8f5e9",borderRadius:12,padding:12,marginTop:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(0,0,0,0.07)"}}>
+        <div style={{width:30,height:30,borderRadius:"50%",background:C.r400,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🍇</div>
+        <div><div style={{fontSize:12,fontWeight:700,color:"#1a1a1a"}}>{storeName||"RoxoClub"}</div><div style={{fontSize:10,color:"#666"}}>via WhatsApp</div></div>
+      </div>
+      <div style={{background:C.white,borderRadius:"4px 14px 14px 14px",padding:"9px 12px",boxShadow:"0 1px 2px rgba(0,0,0,0.1)",maxWidth:"88%"}}>
+        {lines}
+        <div style={{fontSize:10,color:"#aaa",textAlign:"right",marginTop:4}}>agora ✓✓</div>
+      </div>
+    </div>
+  );
+}
+
+// ══ UI PRIMITIVES ═════════════════════════════════════════════════════════════
+function Logo({size=32,dark=false}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="20" fill="#7c3aed"/>
+        <circle cx="20" cy="20" r="14" fill="#6b21a8"/>
+        <path d="M14 20 C14 14 20 11 20 11 C20 11 26 14 26 20 C26 26 20 30 20 30 C20 30 14 26 14 20Z" fill="#a855f7"/>
+        <circle cx="20" cy="20" r="5" fill="#c084fc"/>
+        <circle cx="20" cy="18" r="2" fill="#f5f0ff" opacity="0.6"/>
+      </svg>
+      <div>
+        <div style={{fontFamily:"Georgia,serif",fontWeight:700,fontSize:size*0.55,color:dark?C.r400:C.white,lineHeight:1}}>Roxo<span style={{color:dark?C.r300:C.r200}}>Club</span></div>
+        {size>24&&<div style={{fontSize:9,color:dark?C.r300:C.r200,letterSpacing:2,textTransform:"uppercase"}}>Fidelidade</div>}
+      </div>
+    </div>
+  );
+}
+const Spinner = () => <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:48}}><div style={{width:32,height:32,border:`3px solid ${C.r100}`,borderTopColor:C.r400,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/></div>;
+function Toast({msg,type="success",onClose}) {
+  useEffect(()=>{const t=setTimeout(onClose,3500);return()=>clearTimeout(t);},[]);
+  const bg={success:C.r400,error:C.red,warn:C.gold,info:C.blue}[type]||C.r400;
+  return <div onClick={onClose} style={{position:"fixed",bottom:24,right:24,zIndex:9999,background:bg,color:C.white,padding:"13px 20px",borderRadius:14,fontWeight:600,fontSize:14,boxShadow:"0 8px 30px rgba(0,0,0,0.3)",maxWidth:360,animation:"fadeUp 0.3s ease",cursor:"pointer"}}>{msg}</div>;
+}
+function Modal({title,onClose,children,wide=false}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.white,borderRadius:20,padding:26,width:"100%",maxWidth:wide?680:460,boxShadow:"0 24px 80px rgba(0,0,0,0.35)",animation:"modalIn 0.2s ease",maxHeight:"90vh",overflow:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h3 style={{margin:0,fontSize:17,fontWeight:700,color:C.g900}}>{title}</h3>
+          <button onClick={onClose} style={{background:C.g100,border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:15,color:C.g600}}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+function Input({label,error,hint,...props}) {
+  return (
+    <div style={{marginBottom:13}}>
+      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
+      <input {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${error?C.red:C.g200}`,fontSize:14,outline:"none",boxSizing:"border-box",...props.style}}/>
+      {hint&&<div style={{fontSize:11,color:C.g400,marginTop:3}}>{hint}</div>}
+      {error&&<div style={{color:C.red,fontSize:12,marginTop:3}}>{error}</div>}
+    </div>
+  );
+}
+function Textarea({label,...props}) {
+  return (
+    <div style={{marginBottom:13}}>
+      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
+      <textarea {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",resize:"vertical",boxSizing:"border-box",...props.style}}/>
+    </div>
+  );
+}
+function Select({label,children,...props}) {
+  return (
+    <div style={{marginBottom:13}}>
+      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
+      <select {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",background:C.white,...props.style}}>{children}</select>
+    </div>
+  );
+}
+function Btn({children,variant="primary",loading,full,sm,onClick,style={},disabled}) {
+  const vs={
+    primary:{background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,boxShadow:`0 3px 12px ${C.r400}44`},
+    secondary:{background:C.r50,color:C.r500,border:`1px solid ${C.r100}`},
+    ghost:{background:"transparent",color:C.g600,border:`1px solid ${C.g200}`},
+    danger:{background:C.redL,color:C.red,border:`1px solid #fca5a5`},
+    green:{background:C.greenL,color:"#065f46",border:`1px solid #6ee7b7`},
+    gold:{background:C.goldL,color:"#92400e",border:`1px solid #fcd34d`},
+    blue:{background:C.blueL,color:"#1e40af",border:`1px solid #93c5fd`},
+    dark:{background:C.r900,color:C.white},
+  };
+  return (
+    <button onClick={onClick} disabled={loading||disabled}
+      style={{padding:sm?"6px 13px":"10px 18px",borderRadius:9,border:"none",fontWeight:600,fontSize:sm?12:14,cursor:(loading||disabled)?"not-allowed":"pointer",display:"inline-flex",alignItems:"center",gap:6,width:full?"100%":"auto",justifyContent:full?"center":"flex-start",opacity:(loading||disabled)?0.6:1,...vs[variant],...style}}>
+      {loading&&<span style={{width:13,height:13,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
+      {children}
+    </button>
+  );
+}
+function StatCard({icon,label,value,sub,accent=C.r400,onClick}) {
+  return (
+    <div onClick={onClick} style={{background:C.white,borderRadius:15,padding:"16px 20px",border:`1px solid ${C.g100}`,flex:1,minWidth:0,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",cursor:onClick?"pointer":"default"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontSize:11,color:C.g600,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6,marginBottom:4}}>{label}</div>
+          <div style={{fontSize:24,fontWeight:700,color:C.g900,lineHeight:1,fontFamily:"Georgia,serif"}}>{value}</div>
+          {sub&&<div style={{fontSize:12,color:C.green,marginTop:3,fontWeight:500}}>{sub}</div>}
+        </div>
+        <div style={{width:40,height:40,borderRadius:10,background:accent+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{icon}</div>
+      </div>
+    </div>
+  );
+}
+function LevelBadge({levelKey,levels}) {
+  const b=getLevelBadge(levelKey,levels);
+  const colors={basico:[C.g100,C.g600],vip1:["#fef3c7","#92400e"],vip2:["#f3f4f6","#374151"],vip3:[C.goldL,C.gold2]};
+  const [bg,fg]=(colors[levelKey]||colors.basico);
+  return <span style={{padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:bg,color:fg,whiteSpace:"nowrap"}}>{b.icon} {b.name}</span>;
+}
+
+
+// ══ CONFETTI + CELEBRAÇÃO ════════════════════════════════════════════════════
+function Confetti({active}) {
+  if(!active) return null;
+  const pieces=Array.from({length:22},(_,i)=>({
+    id:i, color:["#7c3aed","#a855f7","#f59e0b","#10b981","#ef4444","#c084fc"][i%6],
+    left:`${5+Math.random()*90}%`, delay:`${Math.random()*0.5}s`,
+    size:`${6+Math.random()*8}px`, dur:`${0.9+Math.random()*0.5}s`,
+  }));
+  return (
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9990,overflow:"hidden"}}>
+      {pieces.map(p=>(
+        <div key={p.id} style={{position:"absolute",top:"-12px",left:p.left,width:p.size,height:p.size,background:p.color,borderRadius:Math.random()>0.5?"50%":"2px",animation:`confettiFall ${p.dur} ${p.delay} forwards ease-in`}}/>
+      ))}
+    </div>
+  );
+}
+
+function PointsCelebration({pts,newPts,clientName,newLevel,prevLevel,settings,onClose}) {
+  const [show,setShow]=useState(false);
+  const levels=settings?.levels||DEFAULT_SETTINGS.levels;
+  const levChanged=newLevel!==prevLevel;
+  const levelInfo=getLevelInfo(newLevel,levels);
+  const levelKeys=Object.keys(levels).sort((a,b)=>levels[a].min-levels[b].min);
+  const nextKey=levelKeys[levelKeys.indexOf(newLevel)+1];
+  const nextLevel=nextKey?levels[nextKey]:null;
+  const pct=nextLevel?Math.min(100,Math.round(((newPts-levelInfo.min)/(nextLevel.min-levelInfo.min))*100)):100;
+  useEffect(()=>{setTimeout(()=>setShow(true),60);},[]);
+  return (
+    <>
+      <Confetti active={show}/>
+      <div style={{position:"fixed",inset:0,background:"rgba(8,4,18,0.88)",zIndex:9980,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+        <div onClick={e=>e.stopPropagation()} style={{background:C.white,borderRadius:24,padding:30,maxWidth:370,width:"100%",textAlign:"center",boxShadow:"0 32px 80px rgba(0,0,0,0.55)",animation:"modalIn 0.35s cubic-bezier(0.34,1.56,0.64,1)"}}>
+          <div style={{width:76,height:76,borderRadius:"50%",background:`linear-gradient(135deg,${C.r500},${C.r300})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,margin:"0 auto 14px",animation:"bounce 0.5s 0.3s ease both",boxShadow:`0 8px 24px ${C.r400}55`}}>⭐</div>
+          <div style={{fontSize:13,color:C.g600,marginBottom:4}}>Parabéns, {clientName.split(" ")[0]}!</div>
+          <div style={{fontSize:50,fontWeight:800,color:C.r400,fontFamily:"Georgia,serif",lineHeight:1,animation:"countUp 0.4s 0.2s both"}}>+{fmtPts(pts)}</div>
+          <div style={{fontSize:16,color:C.g700,fontWeight:600,marginBottom:18}}>pontos adicionados! 🎉</div>
+          {levChanged&&(
+            <div style={{background:`linear-gradient(135deg,${C.gold},${C.gold2})`,borderRadius:14,padding:"11px 16px",marginBottom:16,animation:"levelUp 0.5s 0.4s both"}}>
+              <div style={{fontSize:22,marginBottom:3}}>{getLevelBadge(newLevel,levels).icon}</div>
+              <div style={{fontWeight:800,fontSize:15,color:C.white}}>🆙 Subiu para {levelInfo.name}!</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.85)",marginTop:2}}>{levelInfo.benefits}</div>
+            </div>
+          )}
+          <div style={{background:C.r50,borderRadius:12,padding:"10px 14px",marginBottom:16}}>
+            <div style={{fontSize:10,color:C.g600,marginBottom:1,textTransform:"uppercase",letterSpacing:0.5}}>Saldo total</div>
+            <div style={{fontSize:28,fontWeight:800,color:C.r500,fontFamily:"Georgia,serif"}}>{fmtPts(newPts)} <span style={{fontSize:13,fontWeight:500}}>pts</span></div>
+          </div>
+          {nextLevel&&(
+            <div style={{marginBottom:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.g600,marginBottom:5}}>
+                <span>→ {nextLevel.name}</span><span>{pct}%</span>
+              </div>
+              <div style={{background:C.g200,borderRadius:8,height:9,overflow:"hidden"}}>
+                <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,${C.r400},${C.r300})`,borderRadius:8,transition:"width 1s ease 0.5s"}}/>
+              </div>
+              <div style={{fontSize:11,color:C.g400,marginTop:3}}>Faltam {fmtPts(nextLevel.min-newPts)} pts para {nextLevel.name}</div>
+            </div>
+          )}
+          <button onClick={onClose} style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:`0 4px 14px ${C.r400}55`}}>
+            Continuar ✨
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ══ AUTH ══════════════════════════════════════════════════════════════════════
+function AuthScreen({onAuth}) {
+  const [mode,setMode]=useState("login");
+  const [email,setEmail]=useState(""); const [pwd,setPwd]=useState("");
+  const [err,setErr]=useState(""); const [loading,setLoad]=useState(false);
+  const submit=async()=>{
+    setErr("");setLoad(true);
+    const {data,error}=mode==="login"?await api.signIn(email,pwd):await api.signUp(email,pwd);
+    setLoad(false);
+    if(error){setErr(error.message);return;}
+    if(mode==="signup"&&!data.session){setErr("✅ Confirme seu e-mail para continuar!");return;}
+    onAuth(data.session||data.user);
+  };
+  return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:400,animation:"slideIn 0.4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:32}}><Logo size={52}/><p style={{color:C.r200,fontSize:14,marginTop:10}}>{mode==="login"?"Painel do Lojista":"Criar conta gratuita"}</p></div>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:20,padding:28,border:"1px solid rgba(255,255,255,0.08)"}}>
+          <Input label="E-mail" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          <Input label="Senha" type="password" value={pwd} onChange={e=>setPwd(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()} style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          {err&&<div style={{marginBottom:12,padding:"9px 13px",borderRadius:9,background:err.startsWith("✅")?"#d1fae520":"#fee2e220",color:err.startsWith("✅")?C.green:C.red,fontSize:13}}>{err}</div>}
+          <Btn full loading={loading} onClick={submit}>{mode==="login"?"Entrar":"Criar conta"}</Btn>
+          <div style={{textAlign:"center",marginTop:16,color:"rgba(255,255,255,0.4)",fontSize:13}}>
+            {mode==="login"?"Não tem conta? ":"Já tem conta? "}
+            <span onClick={()=>{setMode(mode==="login"?"signup":"login");setErr("");}} style={{color:C.r200,cursor:"pointer",fontWeight:600}}>{mode==="login"?"Cadastre-se":"Entrar"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══ ONBOARDING ════════════════════════════════════════════════════════════════
+function OnboardingScreen({user,onDone}) {
+  const [name,setName]=useState(""); const [phone,setPhone]=useState("");
+  const [loading,setLoad]=useState(false); const [err,setErr]=useState("");
+  const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const create=async()=>{
+    if(!name.trim()){setErr("Nome da loja é obrigatório");return;}
+    setLoad(true);
+    const {data,error}=await api.createStore(user.id,name.trim(),slug||"loja-"+Date.now(),phone.trim());
+    setLoad(false);
+    if(error){setErr(error.message);return;}
+    onDone(data);
+  };
+  return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:440,animation:"slideIn 0.4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:28}}><Logo size={44}/><h2 style={{color:C.white,fontFamily:"Georgia,serif",fontSize:22,margin:"12px 0 5px"}}>Bem-vindo! 🎉</h2><p style={{color:C.r200,fontSize:14}}>Configure sua loja para começar</p></div>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:20,padding:26,border:"1px solid rgba(255,255,255,0.08)"}}>
+          <Input label="Nome da loja *" value={name} onChange={e=>setName(e.target.value)} placeholder="Ex: Açaíteria da Ana" style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          {name&&<div style={{marginTop:-9,marginBottom:11,fontSize:12,color:C.r200}}>🔗 /{slug}</div>}
+          <Input label="WhatsApp da loja" type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="11999887766" style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",color:C.white}}/>
+          {err&&<div style={{marginBottom:12,padding:"9px 13px",borderRadius:9,background:"#fee2e220",color:C.red,fontSize:13}}>{err}</div>}
+          <Btn full loading={loading} onClick={create}>Criar minha loja →</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══ CAMPANHA — modal envio em massa ═══════════════════════════════════════════
+function CampaignModal({clients,store,onClose,showToast}) {
+  const settings = store.settings||DEFAULT_SETTINGS;
+  const [filter,setFilter]=useState("all");
+  const [excludeIds,setExcludeIds]=useState(new Set());
+  const [msgType,setMsgType]=useState("custom");
+  const [msg,setMsg]=useState(settings.msg_custom||"");
+  const [ageMin,setAgeMin]=useState(""); const [ageMax,setAgeMax]=useState("");
+  const [inactiveDays,setInactiveDays]=useState(settings.inactive_days||30);
+  const [sending,setSending]=useState(false); const [sent,setSent]=useState(0);
+
+  const filtered = useMemo(()=>{
+    let list=[...clients];
+    if(filter==="birthday") list=list.filter(c=>isBirthday(c.dob));
+    if(filter==="inactive") list=list.filter(c=>daysDiff(c.last_visit)>=(inactiveDays||30));
+    if(filter==="vip")      list=list.filter(c=>c.level&&c.level!=="basico");
+    if(filter==="basico")   list=list.filter(c=>!c.level||c.level==="basico");
+    if(filter==="age")      list=list.filter(c=>{const a=age(c.dob);return a!==null&&a>=(ageMin||0)&&a<=(ageMax||999);});
+    return list.filter(c=>!excludeIds.has(c.id));
+  },[clients,filter,excludeIds,inactiveDays,ageMin,ageMax]);
+
+  const msgTemplates = {
+    custom:settings.msg_custom||"",
+    points:settings.msg_points||DEFAULT_SETTINGS.msg_points,
+    birthday:settings.msg_birthday||DEFAULT_SETTINGS.msg_birthday,
+    inactive:settings.msg_inactive||DEFAULT_SETTINGS.msg_inactive,
+    ranking:settings.msg_ranking||DEFAULT_SETTINGS.msg_ranking,
+  };
+
+  const buildMsg = (client,rank) => {
+    const level=getLevelBadge(client.level,settings.levels);
+    const pos=clients.filter(c=>!excludeIds.has(c.id)).sort((a,b)=>b.points-a.points).findIndex(c=>c.id===client.id)+1;
+    const leader=clients[0];
+    return (msg||"")
+      .replace(/\{nome\}/g,client.name.split(" ")[0])
+      .replace(/\{saldo\}/g,fmtPts(client.points))
+      .replace(/\{nivel\}/g,level.name)
+      .replace(/\{link\}/g,magicLink(client.magic_token))
+      .replace(/\{loja\}/g,store.name)
+      .replace(/\{dias\}/g,daysDiff(client.last_visit))
+      .replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
+      .replace(/\{posicao\}/g,pos)
+      .replace(/\{falta\}/g,fmtPts(Math.max(0,(leader?.points||0)-client.points)))
+      .replace(/\{pontos\}/g,fmtPts(client.points));
+  };
+
+  const sendAll = async () => {
+    setSending(true);
+    let count=0;
+    for(const c of filtered){
+      const built=buildMsg(c);
+      window.open(waLink(c.phone,built),"_blank");
+      count++;
+      setSent(count);
+      await new Promise(r=>setTimeout(r,800));
+    }
+    setSending(false);
+    showToast(`✅ ${count} mensagens enviadas!`);
+    onClose();
+  };
+
+  const toggleExclude=(id)=>{
+    const n=new Set(excludeIds);
+    n.has(id)?n.delete(id):n.add(id);
+    setExcludeIds(n);
+  };
+
+  return (
+    <Modal title="📢 Campanha — Enviar mensagens" onClose={onClose} wide>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Esquerda: filtros */}
+        <div>
+          <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>1. Selecionar público</div>
+          <Select value={filter} onChange={e=>setFilter(e.target.value)}>
+            <option value="all">👥 Todos os clientes ({clients.length})</option>
+            <option value="birthday">🎂 Aniversariantes de hoje</option>
+            <option value="inactive">😴 Inativos (não compram há X dias)</option>
+            <option value="vip">⭐ Clientes VIP</option>
+            <option value="basico">👤 Clientes Básicos</option>
+            <option value="age">🎂 Por faixa etária</option>
+          </Select>
+          {filter==="inactive"&&<Input label="Dias sem comprar" type="number" value={inactiveDays} onChange={e=>setInactiveDays(e.target.value)} placeholder="30"/>}
+          {filter==="age"&&<div style={{display:"flex",gap:8}}><Input label="Idade mínima" type="number" value={ageMin} onChange={e=>setAgeMin(e.target.value)} placeholder="18"/><Input label="Idade máxima" type="number" value={ageMax} onChange={e=>setAgeMax(e.target.value)} placeholder="40"/></div>}
+
+          {/* Lista para excluir */}
+          <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:6,marginTop:8}}>Desmarcar para excluir da campanha:</div>
+          <div style={{maxHeight:200,overflow:"auto",border:`1px solid ${C.g200}`,borderRadius:9}}>
+            {filtered.map(c=>(
+              <div key={c.id} onClick={()=>toggleExclude(c.id)} style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:9,cursor:"pointer",borderBottom:`1px solid ${C.g100}`,background:excludeIds.has(c.id)?C.redL:"transparent"}}>
+                <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${excludeIds.has(c.id)?C.red:C.r400}`,background:excludeIds.has(c.id)?"transparent":C.r400,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {!excludeIds.has(c.id)&&<span style={{color:C.white,fontSize:11}}>✓</span>}
+                </div>
+                <div style={{fontSize:13,color:excludeIds.has(c.id)?C.red:C.g900}}>{c.name}</div>
+                <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
+              </div>
+            ))}
+            {filtered.length===0&&<div style={{padding:20,textAlign:"center",color:C.g400,fontSize:13}}>Nenhum cliente neste filtro</div>}
+          </div>
+          <div style={{marginTop:8,fontSize:12,color:C.g600}}>
+            <strong style={{color:C.r500}}>{filtered.length}</strong> clientes selecionados
+          </div>
+        </div>
+
+        {/* Direita: mensagem */}
+        <div>
+          <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>2. Escolher mensagem</div>
+          <Select value={msgType} onChange={e=>{setMsgType(e.target.value);setMsg(msgTemplates[e.target.value]||"");}}>
+            <option value="custom">✏️ Mensagem personalizada</option>
+            <option value="points">⭐ Notificação de pontos</option>
+            <option value="birthday">🎂 Feliz aniversário</option>
+            <option value="inactive">😴 Chamar inativos</option>
+            <option value="ranking">🏆 Posição no ranking</option>
+          </Select>
+          <Textarea label="Mensagem (edite à vontade)" value={msg} onChange={e=>setMsg(e.target.value)} rows={8} placeholder="Digite a mensagem..."/>
+          <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:11,color:C.r500,lineHeight:1.7}}>
+            <strong>Variáveis:</strong> {"{nome}"} {"{saldo}"} {"{nivel}"} {"{link}"} {"{loja}"} {"{dias}"} {"{brinde}"} {"{posicao}"} {"{falta}"}
+          </div>
+
+          {/* Preview */}
+          {filtered.length>0&&msg&&(
+            <div style={{marginTop:12,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #6ee7b7",borderRadius:9}}>
+              <div style={{fontSize:11,fontWeight:600,color:C.green,marginBottom:4}}>📱 Preview (1º cliente):</div>
+              <div style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",lineHeight:1.5}}>{buildMsg(previewClient)}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{marginTop:20,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
+        {sending&&<span style={{fontSize:13,color:C.g600}}>Enviando {sent}/{filtered.length}...</span>}
+        <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+        <Btn loading={sending} disabled={filtered.length===0||!msg} onClick={sendAll}>
+          📤 Enviar para {filtered.length} cliente{filtered.length!==1?"s":""}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ══ RANKING PANEL (cliente) ═══════════════════════════════════════════════════
+function RankingPanel({client,allClients,settings}) {
+  const levels=settings?.levels||DEFAULT_SETTINGS.levels;
+  const sorted=[...allClients].sort((a,b)=>b.points-a.points);
+  const myPos=sorted.findIndex(c=>c.id===client.id)+1;
+  const leader=sorted[0];
+  const myLevel=getLevel(client.points,levels);
+  const myInfo=getLevelInfo(myLevel,levels);
+  const levelKeys=Object.keys(levels).sort((a,b)=>levels[a].min-levels[b].min);
+  const nextLevelKey=levelKeys[levelKeys.indexOf(myLevel)+1];
+  const nextLevel=nextLevelKey?levels[nextLevelKey]:null;
+  const pctToNext=nextLevel?Math.min(100,Math.round(((client.points-myInfo.min)/(nextLevel.min-myInfo.min))*100)):100;
+
+  return (
+    <div style={{padding:"0 0 20px"}}>
+      {/* Minha posição */}
+      <div style={{background:`linear-gradient(135deg,${C.r800},${C.r600})`,borderRadius:18,padding:20,marginBottom:16,color:C.white,textAlign:"center"}}>
+        <div style={{fontSize:12,color:C.r200,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>Sua posição</div>
+        <div style={{fontSize:52,fontWeight:700,fontFamily:"Georgia,serif",lineHeight:1}}>#{myPos}</div>
+        <div style={{fontSize:13,color:C.r200,marginTop:4}}>de {allClients.length} clientes</div>
+        <div style={{marginTop:12,padding:"6px 16px",background:"rgba(255,255,255,0.1)",borderRadius:20,display:"inline-block",fontSize:13,fontWeight:600}}>
+          {getLevelBadge(myLevel,levels).icon} {myInfo.name}
+        </div>
+      </div>
+
+      {/* Progresso para próximo nível */}
+      {nextLevel&&(
+        <div style={{background:C.white,borderRadius:14,padding:16,marginBottom:14,border:`1px solid ${C.g100}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <span style={{fontSize:13,fontWeight:600,color:C.g900}}>🎯 Próximo nível: {nextLevel.name}</span>
+            <span style={{fontSize:12,color:C.g600}}>{fmtPts(client.points)}/{fmtPts(nextLevel.min)}</span>
+          </div>
+          <div style={{background:C.g100,borderRadius:8,height:10,overflow:"hidden",marginBottom:8}}>
+            <div style={{width:`${pctToNext}%`,height:"100%",background:`linear-gradient(90deg,${C.r400},${C.r300})`,borderRadius:8,transition:"width 1s ease"}}/>
+          </div>
+          <div style={{fontSize:12,color:C.r500}}>Faltam <strong>{fmtPts(nextLevel.min-client.points)}</strong> pts · Benefícios: {nextLevel.benefits}</div>
+        </div>
+      )}
+
+      {/* Diferença para o líder */}
+      {leader&&leader.id!==client.id&&(
+        <div style={{background:C.goldL,borderRadius:12,padding:"12px 16px",marginBottom:14,border:`1px solid #fcd34d`}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#92400e",marginBottom:2}}>🏆 Líder: {leader.name.split(" ")[0]}</div>
+          <div style={{fontSize:13,color:"#78350f"}}>Faltam <strong>{fmtPts(leader.points-client.points)}</strong> pts para alcançar o 1º lugar</div>
+          <div style={{fontSize:12,color:"#92400e",marginTop:4}}>Benefícios VIP Ouro: {getLevelInfo("vip3",levels).benefits}</div>
+        </div>
+      )}
+
+      {/* Níveis e benefícios */}
+      <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8}}>🏅 Níveis e benefícios</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {levelKeys.map(key=>{
+          const l=levels[key];
+          const isMe=myLevel===key;
+          const icons={basico:"👤",vip1:"🥉",vip2:"🥈",vip3:"🏆"};
+          return (
+            <div key={key} style={{padding:"12px 14px",borderRadius:12,background:isMe?C.r50:C.white,border:`1.5px solid ${isMe?C.r300:C.g200}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontWeight:700,fontSize:14,color:isMe?C.r500:C.g900}}>{icons[key]||"👤"} {l.name} {isMe&&"← você"}</span>
+                <span style={{fontSize:11,color:C.g600}}>{fmtPts(l.min)}{l.max<999999?` — ${fmtPts(l.max)}`:"+"}  pts</span>
+              </div>
+              <div style={{fontSize:12,color:C.g600}}>{l.benefits}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Top 5 */}
+      <div style={{fontSize:13,fontWeight:700,color:C.g700,marginTop:16,marginBottom:8}}>📊 Top 5 clientes</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {sorted.slice(0,5).map((c,i)=>{
+          const isMe=c.id===client.id;
+          const medals=["🥇","🥈","🥉","4️⃣","5️⃣"];
+          return (
+            <div key={c.id} style={{padding:"10px 14px",borderRadius:10,background:isMe?C.r50:C.white,border:`1px solid ${isMe?C.r300:C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <span style={{fontSize:18}}>{medals[i]}</span>
+                <span style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?C.r500:C.g900}}>{isMe?`${c.name.split(" ")[0]} (você)`:c.name.split(" ")[0]}</span>
+              </div>
+              <span style={{fontWeight:700,color:isMe?C.r500:C.g700,fontSize:14}}>{fmtPts(c.points)} pts</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══ ADMIN PANEL ══════════════════════════════════════════════════════════════
+function AdminPanel({user,store,onSignOut}) {
+  const [tab,setTab]=useState("dashboard");
+  const [clients,setClients]=useState([]);
+  const [txs,setTxs]=useState([]);
+  const [rewards,setRewards]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [toast,setToast]=useState(null);
+  const [modal,setModal]=useState(null);
+  const [selClient,setSel]=useState(null);
+  const [searchQ,setSearch]=useState("");
+  const [selected,setSelected]=useState(new Set());
+  const [clientForm,setCF]=useState({name:"",phone:"",email:"",dob:""});
+  const [pointsForm,setPF]=useState({value:"",note:""});
+  const [rewardForm,setRF]=useState({name:"",points_cost:"",type:"product",description:""});
+  const [settings,setSettings]=useState(store.settings||DEFAULT_SETTINGS);
+  const [savingSett,setSavingSett]=useState(false);
+  const [showCampaign,setShowCampaign]=useState(false);
+  const [celebration,setCelebration]=useState(null);
+
+  const showToast=(msg,type="success")=>setToast({msg,type});
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const [c,t,r]=await Promise.all([api.listClients(store.id),api.listTx(store.id),api.listRewards(store.id)]);
+    setClients(c.data||[]);setTxs(t.data||[]);setRewards(r.data||[]);
+    setLoading(false);
+  },[store.id]);
+
+  useEffect(()=>{load();},[load]);
+
+  // Auto-check aniversariantes
+  useEffect(()=>{
+    if(!clients.length) return;
+    const birthdays=clients.filter(c=>isBirthday(c.dob));
+    if(birthdays.length>0) showToast(`🎂 ${birthdays.length} aniversariante(s) hoje! Acesse Clientes para enviar parabéns.`,"warn");
+  },[clients]);
+
+  const filtered=useMemo(()=>clients.filter(c=>
+    c.name.toLowerCase().includes(searchQ.toLowerCase())||c.phone.includes(searchQ)
+  ),[clients,searchQ]);
+
+  const totalPts=clients.reduce((a,c)=>a+(c.points||0),0);
+  const vipCount=clients.filter(c=>c.level&&c.level!=="basico").length;
+  const todayEarn=txs.filter(t=>t.type==="earn"&&t.created_at?.startsWith(today())).reduce((a,t)=>a+t.points,0);
+  const redeemCount=txs.filter(t=>t.type==="redeem").length;
+  const inactiveCount=clients.filter(c=>daysDiff(c.last_visit)>=(settings.inactive_days||30)).length;
+  const birthdayCount=clients.filter(c=>isBirthday(c.dob)).length;
+
+  const handleAddClient=async()=>{
+    if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
+    const {data,error}=await api.createClient(store.id,clientForm);
+    if(error){showToast(error.message,"error");return;}
+    setClients(p=>[data,...p]);
+    // Verificar cadastro incompleto e oferecer bônus
+    if(!clientForm.email||!clientForm.dob){
+      const bonusPts=settings.bonus_complete_points||50;
+      const completeMsg=(settings.msg_complete||DEFAULT_SETTINGS.msg_complete)
+        .replace("{nome}",data.name.split(" ")[0]).replace("{link}",magicLink(data.magic_token));
+      setTimeout(()=>window.open(waLink(data.phone,completeMsg),"_blank"),500);
+    }
+    setCF({name:"",phone:"",email:"",dob:""});
+    setModal(null);
+    showToast("✅ Cliente cadastrado!");
+  };
+
+  const handleAddPoints=async()=>{
+    if(!pointsForm.value||parseFloat(pointsForm.value)<=0){showToast("Informe o valor da compra","error");return;}
+    const {data,error}=await api.addPoints(store.id,selClient.id,parseFloat(pointsForm.value),pointsForm.note,settings);
+    if(error){showToast(error.message,"error");return;}
+    const pts=data?.pts||0;
+    const newPts=data?.newPts||selClient.points+pts;
+    const newLevel=getLevel(newPts,settings.levels||DEFAULT_SETTINGS.levels);
+    const levelName=getLevelInfo(newLevel,settings.levels||DEFAULT_SETTINGS.levels).name;
+    // Mensagem automática WhatsApp com link mágico
+    const waMsg=(settings.msg_points||DEFAULT_SETTINGS.msg_points)
+      .replace("{nome}",selClient.name.split(" ")[0])
+      .replace("{pontos}",fmtPts(pts))
+      .replace("{saldo}",fmtPts(newPts))
+      .replace("{nivel}",levelName)
+      .replace("{link}",magicLink(selClient.magic_token))
+      .replace("{loja}",store.name);
+    await load();
+    setModal(null);setPF({value:"",note:""});
+    // Celebração visual com confete!
+    setCelebration({pts,newPts,clientName:selClient.name,newLevel,prevLevel:selClient.level||"basico"});
+    setTimeout(()=>window.open(waLink(selClient.phone,waMsg),"_blank"),900);
+  };
+
+  const handleAddReward=async()=>{
+    if(!rewardForm.name||!rewardForm.points_cost){showToast("Preencha nome e pontos","error");return;}
+    const {data,error}=await api.createReward(store.id,{...rewardForm,points_cost:parseInt(rewardForm.points_cost)});
+    if(error){showToast(error.message,"error");return;}
+    setRewards(p=>[...p,data]);setRF({name:"",points_cost:"",type:"product",description:""});
+    setModal(null);showToast("🎁 Recompensa criada!");
+  };
+
+  const handleSaveSettings=async()=>{
+    setSavingSett(true);
+    await api.updateSettings(store.id,settings);
+    setSavingSett(false);showToast("✅ Configurações salvas!");
+  };
+
+  const sendBirthday=(c)=>{
+    const msg=(settings.msg_birthday||DEFAULT_SETTINGS.msg_birthday)
+      .replace("{nome}",c.name.split(" ")[0]).replace("{brinde}",settings.birthday_gift||"brinde especial")
+      .replace("{link}",magicLink(c.magic_token)).replace("{loja}",store.name);
+    window.open(waLink(c.phone,msg),"_blank");
+  };
+
+  const sendIncomplete=(c)=>{
+    const msg=(settings.msg_complete||DEFAULT_SETTINGS.msg_complete)
+      .replace("{nome}",c.name.split(" ")[0]).replace("{link}",magicLink(c.magic_token));
+    window.open(waLink(c.phone,msg),"_blank");
+  };
+
+  const toggleSelect=(id)=>{const n=new Set(selected);n.has(id)?n.delete(id):n.add(id);setSelected(n);};
+  const selectAll=()=>setSelected(filtered.length===selected.size?new Set():new Set(filtered.map(c=>c.id)));
+
+  const sendToSelected=(template)=>{
+    const sel=filtered.filter(c=>selected.has(c.id));
+    if(!sel.length){showToast("Nenhum cliente selecionado","error");return;}
+    sel.forEach((c,i)=>setTimeout(()=>{
+      const msg=(template||settings.msg_custom||"Olá {nome}! 💜")
+        .replace("{nome}",c.name.split(" ")[0]).replace("{saldo}",fmtPts(c.points))
+        .replace("{link}",magicLink(c.magic_token)).replace("{loja}",store.name);
+      window.open(waLink(c.phone,msg),"_blank");
+    },i*800));
+    showToast(`📤 Enviando para ${sel.length} clientes...`);
+  };
+
+  const tabs=[
+    {id:"dashboard",icon:"📊",label:"Dashboard"},
+    {id:"clients",  icon:"👥",label:"Clientes"},
+    {id:"campaign", icon:"📢",label:"Campanhas"},
+    {id:"ranking",  icon:"🏆",label:"Ranking"},
+    {id:"history",  icon:"📋",label:"Histórico"},
+    {id:"rewards",  icon:"🎁",label:"Recompensas"},
+    {id:"settings", icon:"⚙️",label:"Configurações"},
+  ];
+
+  return (
+    <div style={{display:"flex",minHeight:"100vh",background:C.g50}}>
+      {/* Sidebar */}
+      <div style={{width:210,background:C.r900,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}><Logo size={28}/></div>
+        <nav style={{flex:1,padding:"8px 0"}}>
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{width:"100%",padding:"10px 16px",background:tab===t.id?"rgba(124,58,237,0.35)":"transparent",border:"none",borderLeft:tab===t.id?`3px solid ${C.r300}`:"3px solid transparent",color:tab===t.id?C.white:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,textAlign:"left"}}>
+              <span>{t.icon}</span>{t.label}
+              {t.id==="clients"&&birthdayCount>0&&<span style={{marginLeft:"auto",background:C.gold,color:C.white,borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:700}}>🎂{birthdayCount}</span>}
+            </button>
+          ))}
+        </nav>
+        <div style={{padding:12,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:7,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{store.name}</div>
+          <button onClick={onSignOut} style={{width:"100%",padding:"7px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"transparent",color:"rgba(255,255,255,0.45)",fontSize:12,cursor:"pointer"}}>Sair</button>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{background:C.white,borderBottom:`1px solid ${C.g100}`,padding:"12px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h1 style={{margin:0,fontSize:16,fontWeight:700,color:C.g900}}>{tabs.find(t=>t.id===tab)?.icon} {tabs.find(t=>t.id===tab)?.label}</h1>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <Btn sm variant="secondary" onClick={()=>setShowCampaign(true)}>📢 Nova campanha</Btn>
+            <div style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.r500},${C.r300})`,display:"flex",alignItems:"center",justifyContent:"center",color:C.white,fontWeight:700,fontSize:12}}>{(user.email||"?")[0].toUpperCase()}</div>
+          </div>
+        </div>
+
+        <div style={{flex:1,overflow:"auto",padding:22}}>
+          {loading?<Spinner/>:<>
+
+          {/* ── DASHBOARD ── */}
+          {tab==="dashboard"&&(
+            <div>
+              <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+                <StatCard icon="👥" label="Clientes" value={clients.length} sub={`${vipCount} VIPs`} accent={C.r400}/>
+                <StatCard icon="⭐" label="Pts emitidos" value={fmtPts(totalPts)} accent={C.gold}/>
+                <StatCard icon="🎁" label="Resgates" value={redeemCount} accent={C.green}/>
+                <StatCard icon="💰" label="Pts hoje" value={fmtPts(todayEarn)} accent={C.r300}/>
+              </div>
+
+              {/* Onboarding checklist */}
+              {(()=>{
+                const cl=[{done:true,label:"Conta criada ✓"},{done:clients.length>0,label:"Cadastrar 1º cliente",tab:"clients"},{done:txs.length>0,label:"Registrar 1ª venda",tab:"clients"},{done:rewards.length>0,label:"Criar recompensa",tab:"rewards"}];
+                const done=cl.filter(c=>c.done).length;
+                if(done>=4) return null;
+                return (
+                  <div style={{background:`linear-gradient(135deg,${C.r800},${C.r600})`,borderRadius:18,padding:20,marginBottom:16,color:C.white}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div><div style={{fontSize:15,fontWeight:700}}>🚀 Primeiros passos</div><div style={{fontSize:12,color:C.r200,marginTop:1}}>{done}/4 concluídos</div></div>
+                      <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,border:`2px solid ${C.r300}`}}>{Math.round(done/4*100)}%</div>
+                    </div>
+                    {cl.map((c,i)=>(
+                      <div key={i} onClick={!c.done&&c.tab?()=>setTab(c.tab):undefined} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 11px",borderRadius:9,background:c.done?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.07)",marginBottom:6,cursor:!c.done&&c.tab?"pointer":"default",border:`1px solid ${c.done?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"}`}}>
+                        <span style={{fontSize:15}}>{c.done?"✅":"⭕"}</span>
+                        <span style={{fontSize:13,color:c.done?"#6ee7b7":C.r100}}>{c.label}</span>
+                        {!c.done&&c.tab&&<span style={{marginLeft:"auto",fontSize:11,color:C.r200}}>→ fazer agora</span>}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Alertas */}}
+              {birthdayCount>0&&(
+                <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #fcd34d"}}>
+                  <div><div style={{fontWeight:700,color:"#92400e",fontSize:15}}>🎂 {birthdayCount} aniversariante{birthdayCount>1?"s":""} hoje!</div><div style={{fontSize:13,color:"#78350f",marginTop:2}}>Envie uma mensagem especial e fidelize ainda mais!</div></div>
+                  <Btn sm variant="gold" onClick={()=>setTab("clients")}>Ver clientes →</Btn>
+                </div>
+              )}
+              {inactiveCount>0&&(
+                <div style={{background:C.blueL,borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid #93c5fd`}}>
+                  <div><div style={{fontWeight:700,color:"#1e40af",fontSize:15}}>😴 {inactiveCount} cliente{inactiveCount>1?"s":""} {inactiveCount>1?"inativos":"inativo"}</div><div style={{fontSize:13,color:"#1e3a8a",marginTop:2}}>Sem compras há mais de {settings.inactive_days||30} dias</div></div>
+                  <Btn sm variant="blue" onClick={()=>setShowCampaign(true)}>Chamar de volta →</Btn>
+                </div>
+              )}
+
+              <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:16,padding:"18px 22px",marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+                <div><div style={{color:C.r100,fontSize:11,marginBottom:2}}>Ação rápida</div><div style={{color:C.white,fontSize:17,fontWeight:700}}>Registrar pontos + enviar WhatsApp</div><div style={{color:C.r200,fontSize:12,marginTop:2}}>Selecione o cliente na aba Clientes → Pontuar</div></div>
+                <Btn variant="dark" onClick={()=>setTab("clients")} style={{background:"rgba(255,255,255,0.15)",color:C.white,border:"1px solid rgba(255,255,255,0.2)",flexShrink:0}}>👥 Clientes →</Btn>
+              </div>
+
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`}}>
+                <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.g900,fontSize:14}}>📋 Últimas transações</div>
+                {txs.length===0&&<div style={{padding:28,textAlign:"center",color:C.g400,fontSize:14}}>Nenhuma transação ainda</div>}
+                {txs.slice(0,6).map(t=>(
+                  <div key={t.id} style={{padding:"11px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                      <div style={{width:32,height:32,borderRadius:8,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{t.type==="earn"?"⬆️":"🎁"}</div>
+                      <div><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"—"}</div><div style={{fontSize:11,color:C.g600}}>{t.note||"—"} · {fmtDate(t.created_at)}</div></div>
+                    </div>
+                    <span style={{fontWeight:700,fontSize:14,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":""}{t.points} pts</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── CLIENTES ── */}
+          {tab==="clients"&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:10,flexWrap:"wrap"}}>
+                <input value={searchQ} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Buscar nome ou telefone…" style={{padding:"9px 14px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",flex:1,minWidth:180}}/>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {selected.size>0&&<Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_custom)}>📤 Enviar msg ({selected.size})</Btn>}
+                  <Btn sm variant="secondary" onClick={()=>setShowCampaign(true)}>📢 Campanha</Btn>
+                  <Btn sm onClick={()=>setModal("addClient")}>➕ Novo cliente</Btn>
+                </div>
+              </div>
+
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"auto"}}>
+                {filtered.length===0
+                  ?<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhum cliente encontrado</div>
+                  :<table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                    <thead>
+                      <tr style={{background:C.g50}}>
+                        <th style={{padding:"10px 12px",width:36}}>
+                          <div onClick={selectAll} style={{width:18,height:18,border:`2px solid ${C.r400}`,borderRadius:4,cursor:"pointer",background:selected.size===filtered.length&&filtered.length>0?C.r400:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {selected.size===filtered.length&&filtered.length>0&&<span style={{color:C.white,fontSize:11}}>✓</span>}
+                          </div>
+                        </th>
+                        {["Cliente","Telefone","Pontos","Nível","Visitas","Últ. visita",""].map(h=>(
+                          <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(c=>{
+                        const isInactive=daysDiff(c.last_visit)>=(settings.inactive_days||30);
+                        const isBday=isBirthday(c.dob);
+                        const isIncomplete=!c.email||!c.dob;
+                        return (
+                          <tr key={c.id} style={{borderTop:`1px solid ${C.g100}`,background:selected.has(c.id)?C.r50:"transparent"}}>
+                            <td style={{padding:"11px 12px"}}>
+                              <div onClick={()=>toggleSelect(c.id)} style={{width:18,height:18,border:`2px solid ${C.r400}`,borderRadius:4,cursor:"pointer",background:selected.has(c.id)?C.r400:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                {selected.has(c.id)&&<span style={{color:C.white,fontSize:11}}>✓</span>}
+                              </div>
+                            </td>
+                            <td style={{padding:"11px 12px"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <div style={{width:30,height:30,borderRadius:"50%",background:C.r50,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.r500,fontSize:12,flexShrink:0}}>{c.name[0]}</div>
+                                <div>
+                                  <div style={{fontWeight:600,fontSize:13,color:C.g900,display:"flex",gap:5,alignItems:"center"}}>
+                                    {c.name}
+                                    {isBday&&<span title="Aniversariante hoje!">🎂</span>}
+                                    {isInactive&&<span title="Inativo">😴</span>}
+                                    {isIncomplete&&<span title="Cadastro incompleto">⚠️</span>}
+                                  </div>
+                                  <div style={{fontSize:11,color:C.g600}}>{c.email||"sem e-mail"}{c.dob?` · ${fmtDate(c.dob)}`:""}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{padding:"11px 12px",fontSize:13}}>
+                              <a href={waLink(c.phone,"Olá!")} target="_blank" style={{color:C.green,fontWeight:500}}>📱 {c.phone}</a>
+                            </td>
+                            <td style={{padding:"11px 12px",fontWeight:700,color:C.r500,fontSize:14}}>{fmtPts(c.points)}</td>
+                            <td style={{padding:"11px 12px"}}><LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/></td>
+                            <td style={{padding:"11px 12px",fontSize:12,color:C.g700}}>{c.total_visits}x</td>
+                            <td style={{padding:"11px 12px",fontSize:12,color:isInactive?C.red:C.g700}}>{fmtDate(c.last_visit)}</td>
+                            <td style={{padding:"11px 12px"}}>
+                              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                                <Btn sm variant="secondary" onClick={()=>{setSel(c);setModal("addPoints");}}>⭐</Btn>
+                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace("{nome}",c.name.split(" ")[0]).replace("{saldo}",fmtPts(c.points)).replace("{pontos}","").replace("{nivel}",getLevelInfo(c.level||"basico",settings.levels).name).replace("{link}",magicLink(c.magic_token)).replace("{loja}",store.name)),"_blank")} title="Enviar link mágico">🔗</Btn>
+                                {isBday&&<Btn sm variant="gold" onClick={()=>sendBirthday(c)} title="Enviar parabéns">🎂</Btn>}
+                                {isIncomplete&&<Btn sm variant="blue" onClick={()=>sendIncomplete(c)} title="Pedir cadastro completo">⚠️</Btn>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                }
+              </div>
+              {selected.size>0&&(
+                <div style={{marginTop:10,padding:"10px 14px",background:C.r50,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:C.r600,fontWeight:600}}>{selected.size} selecionado{selected.size>1?"s":""}</span>
+                  <Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_points||DEFAULT_SETTINGS.msg_points)}>📤 Enviar notif. pontos</Btn>
+                  <Btn sm variant="secondary" onClick={()=>sendToSelected(settings.msg_custom)}>📤 Enviar msg personalizada</Btn>
+                  <Btn sm variant="ghost" onClick={()=>setSelected(new Set())}>Limpar seleção</Btn>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── CAMPANHAS ── */}
+          {tab==="campaign"&&(
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14,marginBottom:24}}>
+                {[
+                  {icon:"🎂",title:"Aniversariantes",desc:`${clients.filter(c=>isBirthday(c.dob)).length} clientes hoje`,color:C.goldL,action:()=>{setShowCampaign(true);}},
+                  {icon:"😴",title:"Inativos",desc:`${inactiveCount} sem comprar há ${settings.inactive_days||30}+ dias`,color:C.blueL,action:()=>setShowCampaign(true)},
+                  {icon:"⭐",title:"Clientes VIP",desc:`${vipCount} clientes especiais`,color:C.r50,action:()=>setShowCampaign(true)},
+                  {icon:"👥",title:"Todos os clientes",desc:`${clients.length} no total`,color:C.greenL,action:()=>setShowCampaign(true)},
+                ].map(card=>(
+                  <div key={card.title} onClick={card.action} style={{background:card.color,borderRadius:14,padding:18,cursor:"pointer",border:`1px solid ${C.g200}`}}>
+                    <div style={{fontSize:28,marginBottom:8}}>{card.icon}</div>
+                    <div style={{fontWeight:700,fontSize:15,color:C.g900,marginBottom:4}}>{card.title}</div>
+                    <div style={{fontSize:13,color:C.g600,marginBottom:12}}>{card.desc}</div>
+                    <Btn sm variant="primary">Enviar mensagem →</Btn>
+                  </div>
+                ))}
+              </div>
+              <div style={{background:C.white,borderRadius:14,padding:20,border:`1px solid ${C.g100}`}}>
+                <h3 style={{margin:"0 0 4px",color:C.g900}}>💡 Como funciona</h3>
+                <p style={{fontSize:14,color:C.g600,lineHeight:1.7}}>Clique em qualquer campanha acima para abrir o painel de envio. Você pode filtrar o público, editar a mensagem e enviar com um clique para todos os clientes selecionados via WhatsApp. As mensagens automáticas (aniversário, cadastro incompleto, etc.) são configuradas na aba Configurações.</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── RANKING ── */}
+          {tab==="ranking"&&(
+            <div>
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.g900}}>🏆 Ranking completo</div>
+                {clients.length===0&&<div style={{padding:32,textAlign:"center",color:C.g400}}>Nenhum cliente ainda</div>}
+                {[...clients].sort((a,b)=>b.points-a.points).map((c,i)=>{
+                  const medals=["🥇","🥈","🥉"];
+                  return (
+                    <div key={c.id} style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",alignItems:"center",gap:12,background:i<3?"rgba(245,158,11,0.04)":"transparent"}}>
+                      <div style={{width:30,textAlign:"center",fontSize:i<3?20:14,fontWeight:700,color:i<3?C.gold:C.g400}}>{i<3?medals[i]:`#${i+1}`}</div>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontWeight:600,fontSize:14,color:C.g900}}>{c.name}</span>
+                          <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
+                          {isBirthday(c.dob)&&<span>🎂</span>}
+                        </div>
+                        <div style={{fontSize:11,color:C.g600}}>{c.total_visits} visitas · Últ: {fmtDate(c.last_visit)}</div>
+                      </div>
+                      <div style={{fontWeight:700,fontSize:16,color:C.r500}}>{fmtPts(c.points)} pts</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── HISTÓRICO ── */}
+          {tab==="history"&&(
+            <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:700,color:C.g900}}>Todas as transações</span>
+                <span style={{fontSize:12,color:C.g600}}>{txs.length} registros</span>
+              </div>
+              {txs.length===0&&<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhuma transação ainda</div>}
+              {txs.map(t=>(
+                <div key={t.id} style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <div style={{width:34,height:34,borderRadius:9,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{t.type==="earn"?"⬆️":"🎁"}</div>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"Cliente"}</div>
+                      <div style={{fontSize:11,color:C.g600}}>{t.note||"—"}</div>
+                      <div style={{fontSize:10,color:C.g400}}>{fmtDate(t.created_at)}{t.amount_paid?` · R$${Number(t.amount_paid).toFixed(2)}`:""}</div>
+                    </div>
+                  </div>
+                  <span style={{fontWeight:700,fontSize:14,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":""}{t.points} pts</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── RECOMPENSAS ── */}
+          {tab==="rewards"&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+                <Btn onClick={()=>setModal("addReward")}>🎁 Nova recompensa</Btn>
+              </div>
+              {rewards.length===0&&<div style={{background:C.white,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.g100}`,color:C.g400}}>Nenhuma recompensa criada</div>}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
+                {rewards.map(r=>(
+                  <div key={r.id} style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:16,opacity:r.active?1:0.55}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                      <div style={{display:"flex",justifyContent:"space-between",width:"100%",alignItems:"flex-start"}}>
+                    <span style={{fontSize:24}}>{r.type==="product"?"🍇":"💸"}</span>
+                    {r.tag&&<span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:r.tag==="hot"?"#fee2e2":r.tag==="best"?C.greenL:C.blueL,color:r.tag==="hot"?"#ef4444":r.tag==="best"?C.greenD:C.blueD}}>{r.tag==="hot"?"🔥 Popular":r.tag==="best"?"💰 Melhor custo":r.tag==="new"?"✨ Novo":r.tag}</span>}
+                    </div>
+                      <span style={{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:r.active?C.greenL:C.g100,color:r.active?"#065f46":C.g600}}>{r.active?"Ativo":"Inativo"}</span>
+                    </div>
+                    <div style={{fontWeight:700,fontSize:14,color:C.g900,marginBottom:2}}>{r.name}</div>
+                    {r.description&&<div style={{fontSize:12,color:C.g600,marginBottom:6}}>{r.description}</div>}
+                    <div style={{color:C.r500,fontWeight:700,fontSize:16,marginBottom:10}}>{fmtPts(r.points_cost)} pts</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <Btn sm variant={r.active?"danger":"green"} full onClick={()=>{api.toggleReward(r.id,!r.active);setRewards(p=>p.map(rr=>rr.id===r.id?{...rr,active:!rr.active}:rr));}} style={{justifyContent:"center"}}>
+                        {r.active?"Desativar":"Ativar"}
+                      </Btn>
+                      <Btn sm variant="ghost" onClick={()=>{api.deleteReward(r.id);setRewards(p=>p.filter(rr=>rr.id!==r.id));}}>🗑</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── CONFIGURAÇÕES ── */}
+          {tab==="settings"&&(
+            <div style={{maxWidth:640}}>
+              {/* Pontuação */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
+                <h3 style={{margin:"0 0 14px",color:C.g900,fontSize:15}}>⭐ Regras de pontuação</h3>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:130}}><Input label="Pontos por R$1,00" type="number" value={settings.points_per_real||3} onChange={e=>setSettings({...settings,points_per_real:Number(e.target.value)})}/></div>
+                  <div style={{flex:1,minWidth:130}}><Input label="Compra mínima (R$)" type="number" value={settings.min_purchase||10} onChange={e=>setSettings({...settings,min_purchase:Number(e.target.value)})}/></div>
+                  <div style={{flex:1,minWidth:130}}><Input label="Bônus cadastro completo (pts)" type="number" value={settings.bonus_complete_points||50} onChange={e=>setSettings({...settings,bonus_complete_points:Number(e.target.value)})}/></div>
+                  <div style={{flex:1,minWidth:130}}><Input label="Dias p/ considerar inativo" type="number" value={settings.inactive_days||30} onChange={e=>setSettings({...settings,inactive_days:Number(e.target.value)})}/></div>
+                </div>
+                <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:13,color:C.r500}}>
+                  💡 Compra de R$30 = <strong>{Math.floor(30*(settings.points_per_real||3))} pontos</strong>
+                </div>
+              </div>
+
+              {/* Níveis VIP */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <h3 style={{margin:0,color:C.g900,fontSize:15}}>🏆 Níveis e benefícios</h3>
+                  <Select value={settings.ranking_period_months||3} onChange={e=>setSettings({...settings,ranking_period_months:Number(e.target.value)})} style={{width:"auto",marginBottom:0}}>
+                    <option value={1}>Período: 1 mês</option>
+                    <option value={3}>Período: 3 meses</option>
+                    <option value={6}>Período: 6 meses</option>
+                  </Select>
+                </div>
+                {Object.entries(settings.levels||DEFAULT_SETTINGS.levels).map(([key,l])=>(
+                  <div key={key} style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${C.g200}`,marginBottom:8}}>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+                      <span style={{fontWeight:700,fontSize:14}}>{getLevelBadge(key,settings.levels).icon} {l.name}</span>
+                      <Input label="" type="number" value={l.min} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,min:Number(e.target.value)}}})} style={{width:90,marginBottom:0}} placeholder="Pts mín"/>
+                      <span style={{fontSize:12,color:C.g600}}>até</span>
+                      <Input label="" type="number" value={l.max>=999999?"":l.max} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,max:e.target.value?Number(e.target.value):999999}}})} style={{width:90,marginBottom:0}} placeholder="Pts máx"/>
+                    </div>
+                    <Input label="Benefícios" value={l.benefits} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,benefits:e.target.value}}})} placeholder="Ex: 10% de desconto"/>
+                  </div>
+                ))}
+              </div>
+
+              {/* Brinde aniversário */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
+                <h3 style={{margin:"0 0 14px",color:C.g900,fontSize:15}}>🎂 Brinde de aniversário</h3>
+                <Input label="O que o cliente ganha no aniversário" value={settings.birthday_gift||""} onChange={e=>setSettings({...settings,birthday_gift:e.target.value})} placeholder="Ex: Açaí 300ml grátis"/>
+              </div>
+
+              {/* Mensagens automáticas */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
+                <h3 style={{margin:"0 0 4px",color:C.g900,fontSize:15}}>📱 Mensagens automáticas</h3>
+                <div style={{fontSize:12,color:C.g400,marginBottom:14}}>Variáveis: {"{nome} {saldo} {pontos} {nivel} {link} {loja} {dias} {brinde} {posicao} {falta}"}</div>
+                {[
+                  {key:"msg_points",   label:"✅ Após pontuar (enviada automaticamente)"},
+                  {key:"msg_birthday", label:"🎂 Aniversário do cliente"},
+                  {key:"msg_inactive", label:"😴 Chamar clientes inativos"},
+                  {key:"msg_complete", label:"⚠️ Pedir cadastro completo (+50pts)"},
+                  {key:"msg_ranking",  label:"🏆 Posição no ranking"},
+                  {key:"msg_custom",   label:"✏️ Mensagem personalizada (campanha)"},
+                ].map(({key,label})=>(
+                  <div key={key} style={{marginBottom:14}}>
+                    <Textarea label={label} value={settings[key]||""} onChange={e=>setSettings({...settings,[key]:e.target.value})} rows={3}/>
+                {settings[key]&&<WAPreview msg={(settings[key]||"").replace(/\{nome\}/g,"João").replace(/\{saldo\}/g,"320").replace(/\{pontos\}/g,"25").replace(/\{nivel\}/g,"VIP Bronze").replace(/\{link\}/g,APP_URL).replace(/\{loja\}/g,store.name).replace(/\{dias\}/g,"42").replace(/\{brinde\}/g,settings.birthday_gift||"brinde").replace(/\{posicao\}/g,"3").replace(/\{falta\}/g,"180").replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))} storeName={store.name}/>}
+                  </div>
+                ))}
+              </div>
+
+              <Btn loading={savingSett} onClick={handleSaveSettings}>💾 Salvar todas as configurações</Btn>
+            </div>
+          )}
+
+          </>}
+        </div>
+      </div>
+
+      {/* ── MODAIS ── */}
+      {modal==="addClient"&&(
+        <Modal title="➕ Novo cliente" onClose={()=>setModal(null)}>
+          <Input label="Nome completo *" value={clientForm.name} onChange={e=>setCF({...clientForm,name:e.target.value})} placeholder="Ana Beatriz Santos"/>
+          <Input label="Telefone (WhatsApp) *" type="tel" value={clientForm.phone} onChange={e=>setCF({...clientForm,phone:e.target.value})} placeholder="11999887766"/>
+          <Input label="Data de nascimento" type="date" value={clientForm.dob} onChange={e=>setCF({...clientForm,dob:e.target.value})} hint="Usada para enviar parabéns automaticamente 🎂"/>
+          <Input label="E-mail (opcional)" type="email" value={clientForm.email} onChange={e=>setCF({...clientForm,email:e.target.value})} placeholder="ana@email.com"/>
+          <div style={{padding:"10px 12px",background:C.blueL,borderRadius:9,fontSize:13,color:"#1e40af",marginBottom:13}}>
+            💡 Se o cadastro estiver incompleto, o cliente receberá uma mensagem WhatsApp convidando a completar e ganhará {settings.bonus_complete_points||50} pontos de bônus!
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={handleAddClient}>Cadastrar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal==="addPoints"&&selClient&&(
+        <Modal title={`⭐ Pontuar — ${selClient.name}`} onClose={()=>setModal(null)}>
+          <div style={{padding:"10px 13px",background:C.r50,borderRadius:9,marginBottom:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:11,color:C.r600}}>Saldo atual</div>
+              <div style={{fontWeight:700,color:C.r500,fontSize:18}}>{fmtPts(selClient.points)} pts</div>
+            </div>
+            <LevelBadge levelKey={selClient.level||"basico"} levels={settings.levels}/>
+          </div>
+          <Input label="Valor da compra (R$) *" type="number" value={pointsForm.value} onChange={e=>setPF({...pointsForm,value:e.target.value})} placeholder="Ex: 35.90"/>
+          {pointsForm.value>0&&(
+            <div style={{marginTop:-9,marginBottom:11,padding:"8px 11px",background:C.greenL,borderRadius:8,fontSize:13,color:"#065f46"}}>
+              Serão adicionados: <strong>{Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))} pontos</strong>
+              <div style={{fontSize:11,marginTop:2}}>📱 WhatsApp será aberto automaticamente após confirmar</div>
+            </div>
+          )}
+          <Input label="Descrição" value={pointsForm.note} onChange={e=>setPF({...pointsForm,note:e.target.value})} placeholder="Ex: Açaí 500ml + granola"/>
+          {parseFloat(pointsForm.value)>0&&(
+            <WAPreview
+              msg={(settings.msg_points||DEFAULT_SETTINGS.msg_points)
+                .replace(/\{nome\}/g,selClient.name.split(" ")[0])
+                .replace(/\{pontos\}/g,fmtPts(Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))))
+                .replace(/\{saldo\}/g,fmtPts((selClient.points||0)+Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))))
+                .replace(/\{nivel\}/g,getLevelInfo(getLevel((selClient.points||0)+Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3)),settings.levels||DEFAULT_SETTINGS.levels),settings.levels||DEFAULT_SETTINGS.levels).name)
+                .replace(/\{link\}/g,magicLink(selClient.magic_token||""))
+                .replace(/\{loja\}/g,store.name)}
+              storeName={store.name}/>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={handleAddPoints}>Confirmar + WhatsApp 📱</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal==="addReward"&&(
+        <Modal title="🎁 Nova recompensa" onClose={()=>setModal(null)}>
+          <Input label="Nome *" value={rewardForm.name} onChange={e=>setRF({...rewardForm,name:e.target.value})} placeholder="Ex: Açaí 300ml Grátis"/>
+          <Input label="Custo em pontos *" type="number" value={rewardForm.points_cost} onChange={e=>setRF({...rewardForm,points_cost:e.target.value})} placeholder="500"/>
+          <Input label="Descrição (opcional)" value={rewardForm.description} onChange={e=>setRF({...rewardForm,description:e.target.value})} placeholder="Detalhes"/>
+          <div style={{display:"flex",gap:10}}>
+            <div style={{flex:1}}>
+              <Select label="Tipo" value={rewardForm.type} onChange={e=>setRF({...rewardForm,type:e.target.value})}>
+            <option value="product">🍇 Produto grátis</option>
+            <option value="discount">💸 Desconto em reais</option>
+            <option value="free_item">🎁 Item especial</option>
+          </Select>
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={handleAddReward}>Criar recompensa</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {showCampaign&&<CampaignModal clients={clients} store={store} onClose={()=>setShowCampaign(false)} showToast={showToast}/>}
+      {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+      {celebration&&<PointsCelebration {...celebration} settings={settings} onClose={()=>setCelebration(null)}/>}
+    </div>
+  );
+}
+
+// ══ PORTAL DO CLIENTE ══════════════════════════════════════════════════════════
+function ClientPortal({token}) {
+  const [client,setClient]=useState(null);
+  const [allClients,setAllClients]=useState([]);
+  const [rewards,setRewards]=useState([]);
+  const [txs,setTxs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [notFound,setNotFound]=useState(false);
+  const [msg,setMsg]=useState(null);
+  const [tab,setTab]=useState("home");
+  const [completeForm,setCompleteForm]=useState({email:"",dob:""});
+  const [completing,setCompleting]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data:c}=await api.clientByToken(token);
+      if(!c){setNotFound(true);setLoading(false);return;}
+      const sid=c.store_id||c.stores?.id;
+      const [r,t,all]=await Promise.all([api.listRewards(sid),api.listClientTx(c.id),api.listClients(sid)]);
+      setClient(c);
+      setRewards((r.data||[]).filter(rr=>rr.active));
+      setTxs(t.data||[]);
+      setAllClients(all.data||[]);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const handleRedeem=async(reward)=>{
+    if(!client) return;
+    if(client.points<reward.points_cost){setMsg({type:"error",text:"Pontos insuficientes 😔"});return;}
+    const sid=client.store_id||client.stores?.id;
+    const {error}=await api.redeem(sid,client.id,reward);
+    if(error){setMsg({type:"error",text:error.message});return;}
+    setClient(prev=>({...prev,points:prev.points-reward.points_cost}));
+    setMsg({type:"success",text:`🎉 "${reward.name}" resgatado! Mostre esta tela ao atendente.`});
+    setTimeout(()=>setMsg(null),6000);
+  };
+
+  const handleComplete=async()=>{
+    if(!completeForm.email&&!completeForm.dob){setMsg({type:"error",text:"Preencha pelo menos um campo"});return;}
+    setCompleting(true);
+    const {data:updated}=await api.updateClient(client.id,{...completeForm});
+    const sid=client.store_id||client.stores?.id;
+    const bonusPts=(client.stores?.settings?.bonus_complete_points)||50;
+    await api.addBonusPoints(sid,client.id,bonusPts,"Bônus cadastro completo");
+    setClient(prev=>({...prev,...completeForm,points:prev.points+bonusPts}));
+    setCompleting(false);
+    setMsg({type:"success",text:`🎉 Cadastro completo! Você ganhou ${bonusPts} pontos de bônus!`});
+    setTimeout(()=>setMsg(null),5000);
+  };
+
+  if(loading) return <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>;
+  if(notFound) return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,gap:16}}>
+      <Logo size={48}/>
+      <div style={{color:C.r200,textAlign:"center",fontSize:15,lineHeight:1.7}}>Link inválido ou expirado.<br/>Peça ao atendente seu link pessoal.</div>
+    </div>
+  );
+
+  const settings=client.stores?.settings||DEFAULT_SETTINGS;
+  const levels=settings.levels||DEFAULT_SETTINGS.levels;
+  const myLevel=getLevel(client.points,levels);
+  const myInfo=getLevelInfo(myLevel,levels);
+  const levelKeys=Object.keys(levels).sort((a,b)=>levels[a].min-levels[b].min);
+  const nextLevelKey=levelKeys[levelKeys.indexOf(myLevel)+1];
+  const nextLevel=nextLevelKey?levels[nextLevelKey]:null;
+  const pctToNext=nextLevel?Math.min(100,Math.round(((client.points-myInfo.min)/(nextLevel.min-myInfo.min))*100)):100;
+  const storeName=client.stores?.name||"RoxoClub";
+  const isIncomplete=!client.email||!client.dob;
+  const bonusPts=settings.bonus_complete_points||50;
+
+  const clientTabs=[{id:"home",icon:"🏠"},{id:"rewards",icon:"🎁"},{id:"ranking",icon:"🏆"},{id:"history",icon:"📋"}];
+
+  return (
+    <div style={{minHeight:"100vh",background:C.r900,fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:480,margin:"0 auto"}}>
+      {/* Header */}
+      <div style={{background:`linear-gradient(160deg,${C.r800},${C.r900})`,padding:"24px 20px 0"}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><Logo size={28}/></div>
+        <div style={{background:"rgba(255,255,255,0.05)",borderRadius:20,padding:20,border:"1px solid rgba(255,255,255,0.08)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+            <div style={{width:48,height:48,borderRadius:"50%",background:`linear-gradient(135deg,${C.r400},${C.r200})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:20,color:C.white,flexShrink:0}}>{client.name[0]}</div>
+            <div>
+              <div style={{color:C.r200,fontSize:11,marginBottom:1}}>Olá 👋 — {storeName}</div>
+              <div style={{color:C.white,fontWeight:700,fontSize:18,fontFamily:"Georgia,serif"}}>{client.name.split(" ")[0]}</div>
+              <LevelBadge levelKey={myLevel} levels={levels}/>
+            </div>
+          </div>
+          <div style={{textAlign:"center",marginBottom:18}}>
+            <div style={{color:C.r200,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:3}}>Seus pontos</div>
+            <div style={{color:C.white,fontSize:56,fontWeight:700,lineHeight:1,fontFamily:"Georgia,serif"}}>{fmtPts(client.points)}</div>
+            <div style={{color:C.r300,fontSize:12,marginTop:3}}>pontos disponíveis</div>
+          </div>
+          {nextLevel?(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                <span style={{color:C.r300,fontSize:11}}>→ {nextLevel.name}</span>
+                <span style={{color:C.r200,fontSize:11}}>{pctToNext}%</span>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.08)",borderRadius:8,height:7,overflow:"hidden"}}>
+                <div style={{width:`${pctToNext}%`,height:"100%",background:`linear-gradient(90deg,${C.r400},${C.r200})`,borderRadius:8,transition:"width 1.2s ease"}}/>
+              </div>
+              <div style={{fontSize:11,color:C.r300,marginTop:4}}>Faltam {fmtPts(nextLevel.min-client.points)} pts</div>
+            </div>
+          ):(
+            <div style={{textAlign:"center",padding:"7px 12px",background:"rgba(245,158,11,0.15)",borderRadius:9,color:C.gold,fontSize:13,fontWeight:600}}>🏆 Nível máximo atingido! Você é incrível!</div>
+          )}
+        </div>
+      </div>
+
+      {/* Nav tabs */}
+      <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+        {clientTabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"12px 0",background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${C.r300}`:"2px solid transparent",color:tab===t.id?C.r200:"rgba(255,255,255,0.35)",fontSize:18,cursor:"pointer"}}>
+            {t.icon}
+          </button>
+        ))}
+      </div>
+
+      {/* Body */}
+      <div style={{background:C.r50,minHeight:"60vh",padding:"20px 16px"}}>
+        {msg&&<div style={{padding:"12px 15px",borderRadius:11,marginBottom:14,background:msg.type==="success"?"#d1fae5":"#fee2e2",color:msg.type==="success"?"#065f46":C.red,fontWeight:500,fontSize:14,animation:"fadeUp 0.3s ease"}}>{msg.text}</div>}
+
+        {/* Cadastro incompleto */}
+        {isIncomplete&&tab==="home"&&(
+          <div style={{background:"#fffbeb",borderRadius:14,padding:16,marginBottom:16,border:"1px solid #fcd34d"}}>
+            <div style={{fontWeight:700,color:"#92400e",marginBottom:4}}>⚠️ Complete seu cadastro e ganhe {bonusPts} pontos!</div>
+            <div style={{fontSize:13,color:"#78350f",marginBottom:12}}>Adicione seu e-mail e data de nascimento para receber benefícios exclusivos no seu aniversário!</div>
+            {!client.email&&<Input label="E-mail" type="email" value={completeForm.email} onChange={e=>setCompleteForm({...completeForm,email:e.target.value})} placeholder="seu@email.com"/>}
+            {!client.dob&&<Input label="Data de nascimento" type="date" value={completeForm.dob} onChange={e=>setCompleteForm({...completeForm,dob:e.target.value})}/>}
+            <Btn sm loading={completing} onClick={handleComplete}>Completar e ganhar {bonusPts} pts 🎁</Btn>
+          </div>
+        )}
+
+        {tab==="home"&&(
+          <div>
+            <div style={{fontWeight:700,color:C.g900,marginBottom:10,fontSize:15}}>🎁 Recompensas em destaque</div>
+            {rewards.slice(0,3).map(r=>{
+              const can=client.points>=r.points_cost;
+              return (
+                <div key={r.id} style={{background:C.white,borderRadius:13,padding:"13px 15px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,border:`1px solid ${can?"#e9d5ff":C.g100}`,opacity:can?1:0.7}}>
+                  <div style={{display:"flex",gap:11,alignItems:"center"}}>
+                    <span style={{fontSize:26}}>{r.type==="product"?"🍇":"💸"}</span>
+                    <div><div style={{fontWeight:700,fontSize:13,color:C.g900}}>{r.name}</div><div style={{color:C.r500,fontWeight:600,fontSize:12}}>{fmtPts(r.points_cost)} pts</div></div>
+                  </div>
+                  <button onClick={()=>handleRedeem(r)} style={{padding:"7px 13px",borderRadius:9,border:"none",background:can?C.r400:C.g200,color:can?C.white:C.g600,fontWeight:600,fontSize:12,cursor:can?"pointer":"not-allowed"}}>
+                    {can?"Resgatar":"Insuf."}
+                  </button>
+                </div>
+              );
+            })}
+            {rewards.length>3&&<div onClick={()=>setTab("rewards")} style={{textAlign:"center",fontSize:13,color:C.r500,cursor:"pointer",padding:8,fontWeight:600}}>Ver todas as recompensas →</div>}
+
+            <div style={{fontWeight:700,color:C.g900,marginBottom:8,marginTop:18,fontSize:15}}>📋 Últimas atividades</div>
+            {txs.slice(0,4).map(t=>(
+              <div key={t.id} style={{background:C.white,borderRadius:11,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,border:`1px solid ${C.g100}`}}>
+                <div><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div><div style={{fontSize:11,color:C.g400}}>{fmtDate(t.created_at)}</div></div>
+                <span style={{fontWeight:700,color:t.type==="earn"?C.green:C.red,fontSize:13}}>{t.type==="earn"?"+":""}{t.points} pts</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="rewards"&&(
+          <div>
+            <div style={{fontWeight:700,color:C.g900,marginBottom:12,fontSize:15}}>🎁 Todas as recompensas</div>
+            {rewards.length===0&&<div style={{color:C.g400,textAlign:"center",padding:24}}>Nenhuma recompensa disponível</div>}
+            {rewards.map(r=>{
+              const can=client.points>=r.points_cost;
+              const pct=Math.min(100,Math.round((client.points/r.points_cost)*100));
+              return (
+                <div key={r.id} style={{background:C.white,borderRadius:14,padding:16,marginBottom:10,border:`1px solid ${can?"#c084fc":C.g100}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                      <span style={{fontSize:26}}>{r.type==="product"?"🍇":"💸"}</span>
+                      <div><div style={{fontWeight:700,fontSize:14,color:C.g900}}>{r.name}</div>{r.description&&<div style={{fontSize:12,color:C.g600}}>{r.description}</div>}</div>
+                    </div>
+                    <button onClick={()=>handleRedeem(r)} style={{padding:"7px 14px",borderRadius:9,border:"none",background:can?C.r400:C.g200,color:can?C.white:C.g600,fontWeight:600,fontSize:13,cursor:can?"pointer":"not-allowed",flexShrink:0}}>
+                      {can?"Resgatar":"Insuf."}
+                    </button>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,background:C.g100,borderRadius:6,height:6,overflow:"hidden"}}>
+                      <div style={{width:`${pct}%`,height:"100%",background:can?C.green:C.r400,borderRadius:6}}/>
+                    </div>
+                    <span style={{fontSize:11,color:C.g600,whiteSpace:"nowrap"}}>{fmtPts(client.points)}/{fmtPts(r.points_cost)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==="ranking"&&(
+          <RankingPanel client={client} allClients={allClients} settings={settings}/>
+        )}
+
+        {tab==="history"&&(
+          <div>
+            <div style={{fontWeight:700,color:C.g900,marginBottom:12,fontSize:15}}>📋 Histórico completo</div>
+            {txs.length===0&&<div style={{color:C.g400,textAlign:"center",padding:24}}>Nenhuma atividade ainda</div>}
+            {txs.map(t=>(
+              <div key={t.id} style={{background:C.white,borderRadius:11,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,border:`1px solid ${C.g100}`}}>
+                <div style={{display:"flex",gap:9,alignItems:"center"}}>
+                  <div style={{width:30,height:30,borderRadius:7,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{t.type==="earn"?"⬆️":"🎁"}</div>
+                  <div><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div><div style={{fontSize:11,color:C.g400}}>{fmtDate(t.created_at)}</div></div>
+                </div>
+                <span style={{fontWeight:700,color:t.type==="earn"?C.green:C.red,fontSize:13}}>{t.type==="earn"?"+":""}{t.points} pts</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{marginTop:20,textAlign:"center",fontSize:11,color:C.g400}}>Powered by 💜 RoxoClub</div>
+      </div>
+    </div>
+  );
+}
+
+// ══ ROOT ═══════════════════════════════════════════════════════════════════════
+function App() {
+  const [session,setSession]=useState(undefined);
+  const [store,setStore]=useState(null);
+  const [view,setView]=useState("loading");
+  const urlToken=new URLSearchParams(window.location.search).get("token");
+
+  useEffect(()=>{
+    if(urlToken){setView("client");return;}
+    api.getSession().then(({data})=>{
+      const s=data?.session;setSession(s||null);
+      if(!s){setView("auth");return;}
+      api.getStore(s.user.id).then(({data:st})=>{
+        if(!st){setView("onboarding");return;}
+        setStore(st);setView("admin");
+      });
+    });
+    const {data:{subscription}}=sb.auth.onAuthStateChange((ev,s)=>{
+      setSession(s);if(!s){setStore(null);setView("auth");}
+    });
+    return()=>subscription.unsubscribe();
+  },[urlToken]);
+
+  const handleAuth=async(su)=>{
+    const uid=su?.user?.id||su?.id;
+    const {data:st}=await api.getStore(uid);
+    if(!st){setView("onboarding");return;}
+    setStore(st);setView("admin");
+  };
+
+  if(view==="client")  return <ClientPortal token={urlToken}/>;
+  if(view==="loading") return <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner/></div>;
+  if(view==="auth")    return <AuthScreen onAuth={handleAuth}/>;
+  if(view==="onboarding"&&session) return <OnboardingScreen user={session.user} onDone={st=>{setStore(st);setView("admin");}}/>;
+  if(view==="admin"&&session&&store) return <AdminPanel user={session.user} store={store} onSignOut={async()=>{await api.signOut();setSession(null);setStore(null);setView("auth");}}/>;
+  return <AuthScreen onAuth={handleAuth}/>;
+}
+
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
