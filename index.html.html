@@ -103,10 +103,16 @@ const api = {
   clientByToken:(token)=> sb.from("clients").select("*,stores(name,slug,settings)").eq("magic_token",token).maybeSingle(),
 };
 
+const APP_URL = "https://roxo-club.vercel.app";
+
 const waLink = (phone,msg) => {
   const n = phone.replace(/\D/g,"");
   return `https://wa.me/${n.startsWith("55")?n:"55"+n}?text=${encodeURIComponent(msg)}`;
 };
+const magicLink = (token) => `${APP_URL}/?token=${token}`;
+const waMagicMsg = (client) =>
+  `Olá ${client.name.split(" ")[0]}! 💜\n\nAcesse seus pontos do *RoxoClub* pelo link abaixo — sem precisar de login!\n\n👉 ${magicLink(client.magic_token)}\n\nVocê tem *${fmtPts(client.points)} pontos* acumulados! 🎉`;
+
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
 const fmtPts  = (n)   => Number(n||0).toLocaleString("pt-BR");
 
@@ -505,9 +511,9 @@ function AdminPanel({user,store,onSignOut}) {
                             <td style={{padding:"12px 14px",fontSize:13,color:C.g700}}>{c.total_visits}x</td>
                             <td style={{padding:"12px 14px",fontSize:13,color:C.g700}}>{fmtDate(c.last_visit)}</td>
                             <td style={{padding:"12px 14px"}}>
-                              <div style={{display:"flex",gap:6}}>
+                              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                                 <Btn sm variant="secondary" onClick={()=>{setSel(c);setModal("addPoints");}}>⭐ Pontuar</Btn>
-                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone,`Olá ${c.name.split(" ")[0]}! Seu saldo RoxoClub: ${fmtPts(c.points)} pts 💜`),"_blank")}>💬</Btn>
+                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone, waMagicMsg(c)),"_blank")} style={{background:"#dcfce7",color:"#166534"}}>🔗 Enviar link</Btn>
                               </div>
                             </td>
                           </tr>
@@ -660,13 +666,186 @@ function AdminPanel({user,store,onSignOut}) {
   );
 }
 
+// ── PORTAL DO CLIENTE (acesso via ?token=) ────────────────────────────────────
+function ClientPortal({token}) {
+  const [client,setClient]   = useState(null);
+  const [rewards,setRewards] = useState([]);
+  const [txs,setTxs]         = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [msg,setMsg]         = useState(null);
+  const [notFound,setNotFound] = useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data:c} = await api.clientByToken(token);
+      if(!c){setNotFound(true);setLoading(false);return;}
+      const sid = c.store_id || c.stores?.id;
+      const [r,t] = await Promise.all([
+        api.listRewards(sid),
+        api.listClientTx(c.id),
+      ]);
+      setClient(c);
+      setRewards((r.data||[]).filter(rr=>rr.active));
+      setTxs(t.data||[]);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const handleRedeem = async(reward)=>{
+    if(!client) return;
+    if(client.points < reward.points_cost){setMsg({type:"error",text:"Pontos insuficientes 😔"});return;}
+    const sid = client.store_id || client.stores?.id;
+    const {error} = await api.redeem(sid, client.id, reward);
+    if(error){setMsg({type:"error",text:error.message});return;}
+    setClient(prev=>({...prev, points: prev.points - reward.points_cost}));
+    setMsg({type:"success",text:`🎉 "${reward.name}" resgatado! Mostre esta tela ao atendente.`});
+    setTimeout(()=>setMsg(null),6000);
+  };
+
+  if(loading) return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <Spinner/>
+    </div>
+  );
+
+  if(notFound) return (
+    <div style={{minHeight:"100vh",background:C.r900,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,gap:16}}>
+      <Logo size={48}/>
+      <div style={{color:C.r200,textAlign:"center",fontSize:15,lineHeight:1.7}}>
+        Link inválido ou expirado.<br/>Peça ao atendente para enviar seu link novamente.
+      </div>
+    </div>
+  );
+
+  const pct = Math.min(100, Math.round(((client.points||0)/2000)*100));
+  const vip  = client.level==="vip";
+  const storeName = client.stores?.name || "RoxoClub";
+
+  return (
+    <div style={{minHeight:"100vh",background:C.r900,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      {/* Header */}
+      <div style={{background:`linear-gradient(160deg,${C.r800},${C.r900})`,padding:"28px 20px 0"}}>
+        <div style={{maxWidth:430,margin:"0 auto"}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:20}}>
+            <Logo size={30}/>
+          </div>
+          <div style={{background:"rgba(255,255,255,0.05)",borderRadius:22,padding:22,border:"1px solid rgba(255,255,255,0.08)"}}>
+            {/* Perfil */}
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
+              <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.r400},${C.r200})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:22,color:C.white,flexShrink:0}}>
+                {client.name[0]}
+              </div>
+              <div>
+                <div style={{color:C.r200,fontSize:11,marginBottom:2}}>Olá 👋 — {storeName}</div>
+                <div style={{color:C.white,fontWeight:700,fontSize:20,fontFamily:"Georgia,serif"}}>{client.name.split(" ")[0]}</div>
+                <Badge level={client.level}/>
+              </div>
+            </div>
+            {/* Pontos */}
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{color:C.r200,fontSize:11,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Seus pontos</div>
+              <div style={{color:C.white,fontSize:60,fontWeight:700,lineHeight:1,fontFamily:"Georgia,serif"}}>{fmtPts(client.points)}</div>
+              <div style={{color:C.r300,fontSize:13,marginTop:4}}>pontos disponíveis</div>
+            </div>
+            {/* Progresso */}
+            {!vip ? (
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{color:C.r300,fontSize:12}}>Próximo nível: ⭐ VIP</span>
+                  <span style={{color:C.r200,fontSize:12}}>{fmtPts(client.points)}/2.000</span>
+                </div>
+                <div style={{background:"rgba(255,255,255,0.08)",borderRadius:8,height:8,overflow:"hidden"}}>
+                  <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,${C.r400},${C.r200})`,borderRadius:8,transition:"width 1.2s ease"}}/>
+                </div>
+              </div>
+            ) : (
+              <div style={{textAlign:"center",padding:"8px 14px",background:"rgba(245,158,11,0.15)",borderRadius:10,color:C.gold,fontSize:13,fontWeight:600}}>
+                ⭐ Você é cliente VIP! Parabéns!
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{background:C.r50,minHeight:"60vh",borderRadius:"24px 24px 0 0",padding:"24px 20px"}}>
+        <div style={{maxWidth:430,margin:"0 auto"}}>
+
+          {/* Mensagem de resgate */}
+          {msg&&(
+            <div style={{padding:"13px 16px",borderRadius:12,marginBottom:16,background:msg.type==="success"?"#d1fae5":"#fee2e2",color:msg.type==="success"?"#065f46":C.red,fontWeight:500,fontSize:14,animation:"fadeUp 0.3s ease"}}>
+              {msg.text}
+            </div>
+          )}
+
+          {/* Recompensas */}
+          <h3 style={{margin:"0 0 12px",color:C.g900,fontSize:15,fontWeight:700}}>🎁 Recompensas disponíveis</h3>
+          {rewards.length===0 && <div style={{color:C.g400,fontSize:14,textAlign:"center",padding:20,background:C.white,borderRadius:12,marginBottom:20}}>Nenhuma recompensa disponível no momento</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+            {rewards.map(r=>{
+              const can=(client.points||0)>=r.points_cost;
+              return (
+                <div key={r.id} style={{background:C.white,borderRadius:14,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${can?"#e9d5ff":C.g100}`,opacity:can?1:0.6}}>
+                  <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                    <span style={{fontSize:28}}>{r.type==="product"?"🍇":"💸"}</span>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,color:C.g900}}>{r.name}</div>
+                      {r.description&&<div style={{fontSize:12,color:C.g600}}>{r.description}</div>}
+                      <div style={{color:C.r500,fontWeight:600,fontSize:13,marginTop:2}}>{fmtPts(r.points_cost)} pts</div>
+                    </div>
+                  </div>
+                  <button onClick={()=>handleRedeem(r)} style={{padding:"9px 16px",borderRadius:10,border:"none",background:can?C.r400:C.g200,color:can?C.white:C.g600,fontWeight:600,fontSize:13,cursor:can?"pointer":"not-allowed",whiteSpace:"nowrap"}}>
+                    {can?"Resgatar":"Pts insuf."}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Histórico */}
+          <h3 style={{margin:"0 0 12px",color:C.g900,fontSize:15,fontWeight:700}}>📋 Histórico de pontos</h3>
+          {txs.length===0&&<div style={{color:C.g400,fontSize:14,textAlign:"center",padding:20,background:C.white,borderRadius:12}}>Nenhuma atividade ainda</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {txs.map(t=>(
+              <div key={t.id} style={{background:C.white,borderRadius:12,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${C.g100}`}}>
+                <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <div style={{width:32,height:32,borderRadius:8,background:t.type==="earn"?"#d1fae5":"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>
+                    {t.type==="earn"?"⬆️":"🎁"}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div>
+                    <div style={{fontSize:11,color:C.g400}}>{fmtDate(t.created_at)}</div>
+                  </div>
+                </div>
+                <span style={{fontWeight:700,fontSize:14,color:t.type==="earn"?C.green:C.red}}>
+                  {t.type==="earn"?"+":""}{t.points} pts
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{marginTop:24,textAlign:"center",fontSize:12,color:C.g400}}>
+            Powered by 💜 RoxoClub
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── APP ROOT ──────────────────────────────────────────────────────────────────
 function App() {
   const [session,setSession] = useState(undefined);
   const [store,setStore]     = useState(null);
   const [view,setView]       = useState("loading");
 
+  // Detecta token na URL — rota do cliente
+  const urlToken = new URLSearchParams(window.location.search).get("token");
+
   useEffect(()=>{
+    // Se tem token na URL, vai direto para o portal do cliente
+    if(urlToken){setView("client");return;}
+
     api.getSession().then(({data})=>{
       const s=data?.session;
       setSession(s||null);
@@ -681,7 +860,7 @@ function App() {
       if(!s){setStore(null);setView("auth");}
     });
     return()=>subscription.unsubscribe();
-  },[]);
+  },[urlToken]);
 
   const handleAuth = async(sessionOrUser)=>{
     const uid=sessionOrUser?.user?.id||sessionOrUser?.id;
@@ -695,6 +874,7 @@ function App() {
     setSession(null);setStore(null);setView("auth");
   };
 
+  if(view==="client")  return <ClientPortal token={urlToken}/>;
   if(view==="loading") return (
     <div style={{minHeight:"100vh",background:C.r900,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <Spinner/>
