@@ -849,7 +849,13 @@ function AdminPanel({user,store,onSignOut}) {
   // ── Handlers ──
   const handleAddClient=async()=>{
     if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
-    const {data,error}=await api.createClient(store.id,{...clientForm,phone:rawPhone(clientForm.phone)});
+    const {data,error}=await api.createClient(store.id,{
+      name:clientForm.name,
+      phone:rawPhone(clientForm.phone),
+      email:clientForm.email||null,
+      dob:clientForm.dob||null,
+      notes:clientForm.notes||null,
+    });
     if(error){showToast(error.message,"error");return;}
     setClients(p=>[data,...p]);
     if(!clientForm.email||!clientForm.dob){
@@ -873,9 +879,9 @@ function AdminPanel({user,store,onSignOut}) {
     const {data,error}=await api.updateClient(selClient.id,{
       name:editForm.name||selClient.name,
       phone:rawPhone(editForm.phone||selClient.phone),
-      email:editForm.email||selClient.email||"",
-      dob:editForm.dob||selClient.dob||"",
-      notes:editForm.notes!=null?editForm.notes:(selClient.notes||""),
+      email:editForm.email||selClient.email||null,
+      dob:editForm.dob||selClient.dob||null,
+      notes:editForm.notes!=null?editForm.notes:(selClient.notes||null),
     });
     if(error){showToast(error.message,"error");return;}
     // Bônus de cadastro completo pelo lojista
@@ -1763,7 +1769,10 @@ function ClientPortal({token}) {
     const wasComplete=!!client.email&&!!client.dob;
     if(wasComplete){setMsg({type:"error",text:"Cadastro já está completo!"});return;}
     setCompleting(true);
-    await api.updateClient(client.id,{...completeForm});
+    await api.updateClient(client.id,{
+      email:completeForm.email||null,
+      dob:completeForm.dob||null,
+    });
     const nowEmail=completeForm.email||client.email;
     const nowDob=completeForm.dob||client.dob;
     if(nowEmail&&nowDob){
