@@ -34,6 +34,33 @@ input,select,textarea,button{font-family:'Segoe UI',system-ui,sans-serif}
 a{color:#a855f7;text-decoration:none}
 .hover-card{transition:transform 0.15s,box-shadow 0.15s;cursor:pointer}.hover-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.12)}
 .skeleton{background:linear-gradient(90deg,#f0f0f0 25%,#e5e5e5 50%,#f0f0f0 75%);background-size:400px 100%;animation:shimmer 1.4s infinite;border-radius:8px}
+/* ── RESPONSIVO MOBILE ── */
+.admin-layout{display:flex;min-height:100vh;background:#f9fafb}
+.admin-sidebar{width:220px;background:#0f0820;display:flex;flex-direction:column;flex-shrink:0;transition:transform 0.3s ease}
+.admin-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.admin-content{flex:1;overflow:auto;padding:22px}
+.mobile-nav{display:none}
+.mobile-overlay{display:none}
+.hamburger-btn{display:block}
+@media(min-width:769px){
+  .hamburger-btn{display:none!important}
+  .admin-sidebar{transform:none!important}
+}
+@media(max-width:768px){
+  .admin-sidebar{position:fixed;top:0;left:0;height:100vh;z-index:500;transform:translateX(-100%)}
+  .admin-sidebar.open{transform:translateX(0)}
+  .admin-content{padding:14px!important}
+  .mobile-nav{display:flex!important}
+  .mobile-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:499}
+  .hide-mobile{display:none!important}
+  .stat-grid{grid-template-columns:1fr 1fr!important}
+  .campaign-grid{grid-template-columns:1fr!important}
+  .client-table{font-size:12px}
+  .quick-row{flex-direction:column!important}
+}
+@media(max-width:480px){
+  .stat-grid{grid-template-columns:1fr 1fr!important}
+}
 </style>
 </head>
 <body>
@@ -90,6 +117,25 @@ const fmtPhone = (v) => {
   return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`;
 };
 const rawPhone = (v) => (v||"").replace(/\D/g,"");
+
+// ── Máscaras de entrada ──────────────────────────────────────
+const fmtDobMask = (v) => {
+  const d=(v||"").replace(/\D/g,"");
+  if(d.length<=2) return d;
+  if(d.length<=4) return d.slice(0,2)+"/"+d.slice(2);
+  return d.slice(0,2)+"/"+d.slice(2,4)+"/"+d.slice(4,8);
+};
+const dobMaskToISO = (v) => {
+  const d=(v||"").replace(/\D/g,"");
+  if(d.length<8) return "";
+  return d.slice(4,8)+"-"+d.slice(2,4)+"-"+d.slice(0,2);
+};
+const isoToDobMask = (iso) => {
+  if(!iso||iso.length<10) return "";
+  const [y,m,d]=iso.split("-");
+  return (d||"")+"/"+(m||"")+"/"+(y||"");
+};
+
 const waLink = (phone,msg) => {
   const n=(phone||"").replace(/\D/g,"");
   return `https://wa.me/${n.startsWith("55")?n:"55"+n}?text=${encodeURIComponent(msg)}`;
@@ -564,7 +610,7 @@ function CampaignModal({clients,store,onClose,showToast}) {
 
   return (
     <Modal title="📢 Campanha — Enviar mensagens" onClose={onClose} wide>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+      <div className="campaign-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
         {/* Esquerda: público */}
         <div>
           <div style={{fontSize:12,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>1. Selecionar público</div>
@@ -736,6 +782,8 @@ function AdminPanel({user,store,onSignOut}) {
   const [settings,setSettings]=useState({...DEFAULT_SETTINGS,...(store.settings||{})});
   const [savingSett,setSavingSett]=useState(false);
   const [showCampaign,setShowCampaign]=useState(false);
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+  const isMobile=typeof window!=='undefined'&&window.innerWidth<=768;
   // Filtro de datas na Central de Vendas
   const [dateFilter,setDateFilter]=useState("month");
   const [dateFrom,setDateFrom]=useState("");
@@ -813,7 +861,7 @@ function AdminPanel({user,store,onSignOut}) {
         .replace(/\{loja\}/g,store.name);
       setTimeout(()=>window.open(waLink(data.phone,completeMsg),"_blank"),500);
     }
-    setCF({name:"",phone:"",email:"",dob:"",notes:""});
+    setCF({name:"",phone:"",email:"",dob:"",dobMask:"",notes:""});
     setModal(null);
     showToast("✅ Cliente cadastrado!");
   };
@@ -947,15 +995,21 @@ function AdminPanel({user,store,onSignOut}) {
   ];
 
   return (
-    <div style={{display:"flex",minHeight:"100vh",background:C.g50}}>
+    <div className="admin-layout">
+      {/* Overlay mobile */}
+      {sidebarOpen&&<div className="mobile-overlay" onClick={()=>setSidebarOpen(false)}/>}
+
       {/* Sidebar */}
-      <div style={{width:220,background:C.r900,display:"flex",flexDirection:"column",flexShrink:0}}>
-        <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}><Logo size={28}/></div>
-        <nav style={{flex:1,padding:"8px 0"}}>
+      <div className={`admin-sidebar${sidebarOpen?" open":""}`}>
+        <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <Logo size={28}/>
+          <button onClick={()=>setSidebarOpen(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontSize:20,cursor:"pointer",display:"none"}} className="hide-desktop">✕</button>
+        </div>
+        <nav style={{flex:1,padding:"8px 0",overflowY:"auto"}}>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)}
-              style={{width:"100%",padding:"10px 16px",background:tab===t.id?"rgba(124,58,237,0.35)":"transparent",border:"none",borderLeft:tab===t.id?`3px solid ${C.r300}`:"3px solid transparent",color:tab===t.id?C.white:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,textAlign:"left"}}>
-              <span>{t.icon}</span>{t.label}
+            <button key={t.id} onClick={()=>{setTab(t.id);setSidebarOpen(false);}}
+              style={{width:"100%",padding:"12px 16px",background:tab===t.id?"rgba(124,58,237,0.35)":"transparent",border:"none",borderLeft:tab===t.id?`3px solid ${C.r300}`:"3px solid transparent",color:tab===t.id?C.white:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,textAlign:"left"}}>
+              <span style={{fontSize:16}}>{t.icon}</span>{t.label}
               {t.id==="clients"&&birthdayCount>0&&<span style={{marginLeft:"auto",background:C.gold,color:C.white,borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:700}}>🎂{birthdayCount}</span>}
             </button>
           ))}
@@ -967,16 +1021,21 @@ function AdminPanel({user,store,onSignOut}) {
       </div>
 
       {/* Main */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{background:C.white,borderBottom:`1px solid ${C.g100}`,padding:"12px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <h1 style={{margin:0,fontSize:16,fontWeight:700,color:C.g900}}>{tabs.find(t=>t.id===tab)?.icon} {tabs.find(t=>t.id===tab)?.label}</h1>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <Btn sm variant="secondary" onClick={()=>setShowCampaign(true)}>📢 Nova campanha</Btn>
-            <div style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.r500},${C.r300})`,display:"flex",alignItems:"center",justifyContent:"center",color:C.white,fontWeight:700,fontSize:12}}>{(user.email||"?")[0].toUpperCase()}</div>
+      <div className="admin-main">
+        {/* Header */}
+        <div style={{background:C.white,borderBottom:`1px solid ${C.g100}`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={()=>setSidebarOpen(true)} className="mobile-nav" style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.g700,padding:"4px 6px",display:"none"}}>☰</button>
+            <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:`1px solid ${C.g200}`,borderRadius:8,fontSize:18,cursor:"pointer",color:C.g700,padding:"5px 10px",marginRight:4,display:"block"}} className="hamburger-btn">☰</button>
+            <h1 style={{margin:0,fontSize:15,fontWeight:700,color:C.g900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:180}}>{tabs.find(t=>t.id===tab)?.icon} {tabs.find(t=>t.id===tab)?.label}</h1>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <Btn sm variant="secondary" onClick={()=>setShowCampaign(true)} style={{whiteSpace:"nowrap"}}>📢</Btn>
+            <div style={{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.r500},${C.r300})`,display:"flex",alignItems:"center",justifyContent:"center",color:C.white,fontWeight:700,fontSize:12,flexShrink:0}}>{(user.email||"?")[0].toUpperCase()}</div>
           </div>
         </div>
 
-        <div style={{flex:1,overflow:"auto",padding:22}}>
+        <div className="admin-content" style={{paddingBottom:80}}>
           {loading?<Spinner/>:<>
 
           {/* ══ CENTRAL DE VENDAS ══ */}
@@ -986,7 +1045,7 @@ function AdminPanel({user,store,onSignOut}) {
               <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:18,padding:20,marginBottom:20}}>
                 <div style={{color:C.white,fontWeight:700,fontSize:16,marginBottom:4}}>⭐ Registrar pontos</div>
                 <div style={{color:C.r200,fontSize:12,marginBottom:14}}>Busque o cliente e informe o valor da compra</div>
-                <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div className="quick-row" style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
                   <div style={{flex:2,minWidth:180,position:"relative"}}>
                     <input value={quickSearch} onChange={e=>{setQuickSearch(e.target.value);setQuickClient(null);}}
                       placeholder="🔍 Buscar cliente pelo nome ou telefone..."
@@ -1050,7 +1109,7 @@ function AdminPanel({user,store,onSignOut}) {
               </div>
 
               {/* Cards principais */}
-              <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+              <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
                 <StatCard icon="💰" label="Valor em vendas" value={fmtMoney(totalSales)} sub={`${salesCount} vendas`} accent={C.green}/>
                 <StatCard icon="📦" label="Qtd. de vendas" value={salesCount} sub={`${fmtMoney(totalSales/Math.max(salesCount,1))} ticket médio`} accent={C.blue}/>
                 <StatCard icon="👥" label="Clientes" value={clients.length} sub={`${vipCount} VIPs`} accent={C.r400}/>
@@ -1479,8 +1538,27 @@ function AdminPanel({user,store,onSignOut}) {
       {modal==="addClient"&&(
         <Modal title="➕ Novo cliente" onClose={()=>setModal(null)}>
           <Input label="Nome completo *" value={clientForm.name} onChange={e=>setCF({...clientForm,name:e.target.value})} placeholder="Ana Beatriz Santos"/>
-          <Input label="Telefone (WhatsApp) *" type="tel" value={clientForm.phone} onChange={e=>setCF({...clientForm,phone:e.target.value})} placeholder="11999887766"/>
-          <Input label="Data de nascimento" type="date" value={clientForm.dob} onChange={e=>setCF({...clientForm,dob:e.target.value})} hint="Para enviar parabéns automaticamente 🎂"/>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Telefone (WhatsApp) *</div>
+            <input
+              type="tel" inputMode="numeric"
+              value={clientForm.phone}
+              onChange={e=>setCF({...clientForm,phone:fmtPhone(e.target.value)})}
+              placeholder="(11) 99999-9999"
+              maxLength={15}
+              style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Data de nascimento <span style={{color:C.g400,fontWeight:400}}>(DD/MM/AAAA)</span></div>
+            <input
+              type="text" inputMode="numeric"
+              value={clientForm.dobMask||""}
+              onChange={e=>{const m=fmtDobMask(e.target.value);setCF({...clientForm,dobMask:m,dob:dobMaskToISO(m)});}}
+              placeholder="01/01/1990"
+              maxLength={10}
+              style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+            <div style={{fontSize:11,color:C.g400,marginTop:3}}>Para enviar parabéns automaticamente 🎂</div>
+          </div>
           <Input label="E-mail (opcional)" type="email" value={clientForm.email} onChange={e=>setCF({...clientForm,email:e.target.value})} placeholder="ana@email.com"/>
           <Textarea label="Preferências & observações" value={clientForm.notes} onChange={e=>setCF({...clientForm,notes:e.target.value})} rows={2} placeholder="Ex: intolerância à lactose, prefere sem Nutella, tem 2 filhos..."/>
           <div style={{padding:"10px 12px",background:C.blueL,borderRadius:9,fontSize:13,color:C.blueD,marginBottom:13}}>
@@ -1496,13 +1574,31 @@ function AdminPanel({user,store,onSignOut}) {
       {modal==="editClient"&&selClient&&(
         <Modal title={`✏️ Editar — ${selClient.name}`} onClose={()=>{setModal(null);setSel(null);}}>
           <Input label="Nome completo" value={editForm.name} onChange={e=>setEF({...editForm,name:e.target.value})} placeholder={selClient.name}/>
-          <Input label="Telefone (WhatsApp)" type="tel" value={editForm.phone} onChange={e=>setEF({...editForm,phone:e.target.value})} placeholder={fmtPhone(selClient.phone||"")}/>
-          <Input label="Data de nascimento" type="date" value={editForm.dob} onChange={e=>setEF({...editForm,dob:e.target.value})}/>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Telefone (WhatsApp)</div>
+            <input
+              type="tel" inputMode="numeric"
+              value={editForm.phone}
+              onChange={e=>setEF({...editForm,phone:fmtPhone(e.target.value)})}
+              placeholder={fmtPhone(selClient.phone||"")}
+              maxLength={15}
+              style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Data de nascimento <span style={{color:C.g400,fontWeight:400}}>(DD/MM/AAAA)</span></div>
+            <input
+              type="text" inputMode="numeric"
+              value={editForm.dobMask||isoToDobMask(editForm.dob||selClient.dob||"")}
+              onChange={e=>{const m=fmtDobMask(e.target.value);setEF({...editForm,dobMask:m,dob:dobMaskToISO(m)});}}
+              placeholder="01/01/1990"
+              maxLength={10}
+              style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+          </div>
           <Input label="E-mail" type="email" value={editForm.email} onChange={e=>setEF({...editForm,email:e.target.value})} placeholder="email@exemplo.com"/>
           <Textarea label="Preferências & observações" value={editForm.notes} onChange={e=>setEF({...editForm,notes:e.target.value})} rows={2} placeholder="Ex: intolerância à lactose, tem filhos, prefere sem granola..."/>
           {(!selClient.email||!selClient.dob)&&!selClient.profile_completed&&(
             <div style={{padding:"10px 12px",background:C.greenL,borderRadius:9,fontSize:13,color:C.greenD,marginBottom:13}}>
-              🎁 Se completar e-mail e data de nascimento, o cliente ganhará automaticamente {settings.bonus_complete_points||50} pontos!
+              🎁 Ao completar e-mail e data de nascimento, o cliente ganhará {settings.bonus_complete_points||50} pontos!
             </div>
           )}
           <div style={{display:"flex",gap:10}}>
@@ -1594,6 +1690,18 @@ function AdminPanel({user,store,onSignOut}) {
 
       {showCampaign&&<CampaignModal clients={clients} store={store} onClose={()=>setShowCampaign(false)} showToast={showToast}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+
+      {/* Nav mobile bottom bar */}
+      <div className="mobile-nav" style={{display:"flex",position:"fixed",bottom:0,left:0,right:0,background:C.r900,borderTop:"1px solid rgba(255,255,255,0.1)",zIndex:400,padding:"4px 0"}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{flex:1,padding:"8px 4px",background:"transparent",border:"none",color:tab===t.id?C.r200:"rgba(255,255,255,0.35)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}>
+            <span style={{fontSize:18}}>{t.icon}</span>
+            <span style={{fontSize:9,fontWeight:tab===t.id?700:400,whiteSpace:"nowrap"}}>{t.label.split(" ")[0]}</span>
+            {t.id==="clients"&&birthdayCount>0&&<span style={{position:"absolute",top:4,right:"50%",transform:"translateX(12px)",background:C.gold,color:C.white,borderRadius:20,padding:"0 4px",fontSize:9,fontWeight:700}}>{birthdayCount}</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1760,7 +1868,16 @@ function ClientPortal({token}) {
             <div style={{fontWeight:700,color:"#92400e",marginBottom:4}}>⚠️ Complete seu cadastro e ganhe {bonusPts} pontos!</div>
             <div style={{fontSize:13,color:"#78350f",marginBottom:12}}>Adicione e-mail e data de nascimento para benefícios exclusivos no seu aniversário!</div>
             {!client.email&&<Input label="E-mail" type="email" value={completeForm.email} onChange={e=>setCompleteForm({...completeForm,email:e.target.value})} placeholder="seu@email.com"/>}
-            {!client.dob&&<Input label="Data de nascimento" type="date" value={completeForm.dob} onChange={e=>setCompleteForm({...completeForm,dob:e.target.value})}/>}
+            {!client.dob&&(
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Data de nascimento <span style={{color:C.g400,fontWeight:400}}>(DD/MM/AAAA)</span></div>
+                <input type="text" inputMode="numeric"
+                  value={completeForm.dobMask||""}
+                  onChange={e=>{const m=fmtDobMask(e.target.value);setCompleteForm({...completeForm,dobMask:m,dob:dobMaskToISO(m)});}}
+                  placeholder="01/01/1990" maxLength={10}
+                  style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",background:C.white}}/>
+              </div>
+            )}
             <Btn sm loading={completing} onClick={handleComplete}>Completar e ganhar {bonusPts} pts 🎁</Btn>
           </div>
         )}
