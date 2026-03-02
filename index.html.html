@@ -53,24 +53,28 @@ const C = {
   r900:"#0f0820",r800:"#1e0d38",r700:"#2d1155",r600:"#4a1a7a",
   r500:"#6b21a8",r400:"#7c3aed",r300:"#a855f7",r200:"#c084fc",r100:"#e9d5ff",r50:"#f5f0ff",
   gold:"#f59e0b",goldL:"#fef3c7",gold2:"#d97706",
-  green:"#10b981",greenL:"#d1fae5",
+  green:"#10b981",greenL:"#d1fae5",greenD:"#065f46",
   red:"#ef4444",redL:"#fee2e2",
-  blue:"#3b82f6",blueL:"#dbeafe",
+  blue:"#3b82f6",blueL:"#dbeafe",blueD:"#1e40af",
   white:"#fff",
   g50:"#f9fafb",g100:"#f3f4f6",g200:"#e5e7eb",g300:"#d1d5db",
   g400:"#9ca3af",g600:"#4b5563",g700:"#374151",g900:"#111827",
 };
 
 // ══ HELPERS ══════════════════════════════════════════════════════════════════
-const fmtDate  = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
-const fmtPts   = (n)   => Number(n||0).toLocaleString("pt-BR");
-const today    = ()    => new Date().toISOString().split("T")[0];
-const daysDiff = (iso) => iso ? Math.floor((Date.now()-new Date(iso))/(86400000)) : 9999;
+const fmtDate    = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+const fmtDateTime= (iso) => iso ? new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+const fmtPts     = (n)   => Number(n||0).toLocaleString("pt-BR");
+const fmtMoney   = (n)   => Number(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const today      = ()    => new Date().toISOString().split("T")[0];
+const daysDiff   = (iso) => iso ? Math.floor((Date.now()-new Date(iso))/(86400000)) : 9999;
+const hourOfDay  = (iso) => iso ? new Date(iso).getHours() : null;
 const isBirthday = (dob) => {
   if(!dob) return false;
   const d=new Date(dob), now=new Date();
   return d.getDate()===now.getDate() && d.getMonth()===now.getMonth();
 };
+const birthMonth = (dob) => dob ? new Date(dob).getMonth() : null;
 const age = (dob) => {
   if(!dob) return null;
   const d=new Date(dob), now=new Date();
@@ -78,18 +82,32 @@ const age = (dob) => {
   if(now.getMonth()<d.getMonth()||(now.getMonth()===d.getMonth()&&now.getDate()<d.getDate())) a--;
   return a;
 };
-const fmtPhone = (v) => { const d=v.replace(/\D/g,""); if(d.length<=2) return d; if(d.length<=6) return `(${d.slice(0,2)}) ${d.slice(2)}`; if(d.length<=10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`; return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`; };
-const rawPhone = (v) => v.replace(/\D/g,"");
+const fmtPhone = (v) => {
+  const d=(v||"").replace(/\D/g,"");
+  if(d.length<=2) return d;
+  if(d.length<=6) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  if(d.length<=10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`;
+};
+const rawPhone = (v) => (v||"").replace(/\D/g,"");
 const waLink = (phone,msg) => {
-  const n=phone.replace(/\D/g,"");
+  const n=(phone||"").replace(/\D/g,"");
   return `https://wa.me/${n.startsWith("55")?n:"55"+n}?text=${encodeURIComponent(msg)}`;
 };
 const magicLink = (token) => `${APP_URL}/?token=${token}`;
 
+// Calcula horário mais frequente do cliente baseado nas transações
+const getPreferredHour = (txList) => {
+  if(!txList||!txList.length) return null;
+  const hours={};
+  txList.forEach(t=>{const h=hourOfDay(t.created_at);if(h!==null){hours[h]=(hours[h]||0)+1;}});
+  return Object.entries(hours).sort((a,b)=>b[1]-a[1])[0]?.[0];
+};
+
 const DEFAULT_SETTINGS = {
   points_per_real:3, min_purchase:10,
   points_expire:false, expire_days:365,
-  // Níveis
+  expire_mode:"never", // "never"|"days"
   levels:{
     basico:{name:"Cliente",min:0,max:499,color:"#9ca3af",benefits:"Acesso ao programa de pontos"},
     vip1:  {name:"VIP Bronze",min:500,max:999,color:"#b45309",benefits:"5% de desconto em todas as compras"},
@@ -97,16 +115,21 @@ const DEFAULT_SETTINGS = {
     vip3:  {name:"VIP Ouro",min:2000,max:999999,color:"#d97706",benefits:"15% de desconto + brinde exclusivo + fila preferencial"},
   },
   ranking_period_months:3,
-  // Mensagens automáticas
-  msg_points:"Olá {nome}! 🍇 Você ganhou *{pontos} pontos* no RoxoClub!\nSaldo: *{saldo} pts* | Nível: {nivel}\n\n👉 Veja seus pontos: {link}",
-  msg_birthday:"🎂 Feliz aniversário, {nome}! A {loja} te manda um presente especial!\n\n🎁 {brinde}\n\nAproveite seu dia! 💜\n👉 {link}",
-  msg_inactive:"Sentimos sua falta, {nome}! 😢\nFaz {dias} dias que você não aparece na {loja}.\n\n🎁 Que tal voltar e ganhar *pontos em dobro* na sua próxima visita?\n👉 {link}",
-  msg_complete:"Olá {nome}! Complete seu cadastro no RoxoClub e *ganhe 50 pontos* de bônus! 🎉\n👉 {link}",
-  msg_ranking:"🏆 {nome}, você está em #{posicao} no ranking da {loja}!\nSeus pontos: *{saldo}*\nFaltam *{falta}* pts para alcançar o líder!\n👉 {link}",
-  msg_custom:"",
+  msg_points:"Olá, {nome}! 🍇\nVocê fez uma compra na *{loja}* e ganhou *{pontos} pontos*!\n\n📊 Saldo: *{saldo} pts*\n🏆 Nível: {nivel}\n\n👉 Veja seus pontos e recompensas:\n{link}\n\n💜 *RoxoClub* — _Fidelidade_",
+  msg_birthday:"🎂 Feliz aniversário, {nome}!\n\nA *{loja}* te manda um presente especial!\n🎁 {brinde}\n\nAproveite seu dia! 💜\n👉 {link}\n\n💜 *RoxoClub* — _Fidelidade_",
+  msg_inactive:"Sentimos sua falta, {nome}! 😢\nFaz {dias} dias que você não aparece na *{loja}*.\n\n🎁 Que tal voltar e ganhar *pontos em dobro*?\n👉 {link}\n\n💜 *RoxoClub* — _Fidelidade_",
+  msg_complete:"Olá, {nome}! Complete seu cadastro no RoxoClub e *ganhe {bonus} pontos* de bônus! 🎉\n👉 {link}\n\n💜 *RoxoClub* — _Fidelidade_",
+  msg_ranking:"🏆 {nome}, você está em *#{posicao}* no ranking da *{loja}*!\nSeus pontos: *{saldo}*\nFaltam *{falta}* pts para o líder!\n👉 {link}\n\n💜 *RoxoClub* — _Fidelidade_",
+  msg_custom:"Olá, {nome}! 🍇\n\n{loja} tem uma novidade especial pra você!\n\n👉 Acesse: {link}\n\n💜 *RoxoClub* — _Fidelidade_",
   birthday_gift:"Açaí 300ml grátis 🍇",
   inactive_days:30,
   bonus_complete_points:50,
+  products:[],
+  store_email:"",
+  store_founded:"",
+  store_segment:"",
+  store_owner:"",
+  store_address:"",
 };
 
 // ══ API ══════════════════════════════════════════════════════════════════════
@@ -126,8 +149,8 @@ const api = {
   deleteClient:(id)    => sb.from("clients").delete().eq("id",id),
   clientByToken:(tok)  => sb.from("clients").select("*,stores(name,slug,settings,phone)").eq("magic_token",tok).maybeSingle(),
 
-  listTx:     (sid,lim=60) => sb.from("transactions").select("*,clients(name,phone)").eq("store_id",sid).order("created_at",{ascending:false}).limit(lim),
-  listClientTx:(cid)       => sb.from("transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(40),
+  listTx:     (sid,lim=200) => sb.from("transactions").select("*,clients(name,phone)").eq("store_id",sid).order("created_at",{ascending:false}).limit(lim),
+  listClientTx:(cid)        => sb.from("transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(60),
 
   addPoints: async (sid,cid,amount,note,settings) => {
     const pts = Math.floor(amount*(settings.points_per_real||3));
@@ -181,7 +204,7 @@ function getLevelBadge(levelKey, levels) {
   return {icon:icons[levelKey]||"👤", ...l};
 }
 
-
+// ══ UI PRIMITIVES ═════════════════════════════════════════════════════════════
 function SkeletonLine({w="100%",h=14,mb=8}) {
   return <div className="skeleton" style={{width:w,height:h,marginBottom:mb,display:"block"}}/>;
 }
@@ -189,7 +212,7 @@ function SkeletonLine({w="100%",h=14,mb=8}) {
 function WAPreview({msg,storeName}) {
   if(!msg) return null;
   const lines=msg.split("\n").map((l,i)=>{
-    const bold=l.replace(/\*(.*?)\*/g,"<strong>$1</strong>");
+    const bold=l.replace(/\*(.*?)\*/g,"<strong>$1</strong>").replace(/_(.*?)_/g,"<em>$1</em>");
     return <p key={i} style={{margin:"2px 0",fontSize:13,lineHeight:1.5}} dangerouslySetInnerHTML={{__html:bold||"&nbsp;"}}/>;
   });
   return (
@@ -206,7 +229,6 @@ function WAPreview({msg,storeName}) {
   );
 }
 
-// ══ UI PRIMITIVES ═════════════════════════════════════════════════════════════
 function Logo({size=32,dark=false}) {
   return (
     <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -224,77 +246,85 @@ function Logo({size=32,dark=false}) {
     </div>
   );
 }
+
 const Spinner = () => <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:48}}><div style={{width:32,height:32,border:`3px solid ${C.r100}`,borderTopColor:C.r400,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/></div>;
+
 function Toast({msg,type="success",onClose}) {
   useEffect(()=>{const t=setTimeout(onClose,3500);return()=>clearTimeout(t);},[]);
   const bg={success:C.r400,error:C.red,warn:C.gold,info:C.blue}[type]||C.r400;
   return <div onClick={onClose} style={{position:"fixed",bottom:24,right:24,zIndex:9999,background:bg,color:C.white,padding:"13px 20px",borderRadius:14,fontWeight:600,fontSize:14,boxShadow:"0 8px 30px rgba(0,0,0,0.3)",maxWidth:360,animation:"fadeUp 0.3s ease",cursor:"pointer"}}>{msg}</div>;
 }
+
 function Modal({title,onClose,children,wide=false}) {
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:C.white,borderRadius:20,padding:26,width:"100%",maxWidth:wide?680:460,boxShadow:"0 24px 80px rgba(0,0,0,0.35)",animation:"modalIn 0.2s ease",maxHeight:"90vh",overflow:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <h3 style={{margin:0,fontSize:17,fontWeight:700,color:C.g900}}>{title}</h3>
-          <button onClick={onClose} style={{background:C.g100,border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:15,color:C.g600}}>✕</button>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.white,borderRadius:20,padding:24,width:"100%",maxWidth:wide?760:480,maxHeight:"90vh",overflow:"auto",animation:"modalIn 0.25s ease",boxShadow:"0 24px 60px rgba(0,0,0,0.4)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div style={{fontWeight:700,fontSize:16,color:C.g900}}>{title}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.g400,padding:"0 4px"}}>×</button>
         </div>
         {children}
       </div>
     </div>
   );
 }
-function Input({label,error,hint,...props}) {
+
+function Input({label,hint,...props}) {
   return (
-    <div style={{marginBottom:13}}>
-      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
-      <input {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${error?C.red:C.g200}`,fontSize:14,outline:"none",boxSizing:"border-box",...props.style}}/>
+    <div style={{marginBottom:12}}>
+      {label&&<div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>{label}</div>}
+      <input {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",background:C.white,color:C.g900,...props.style}}/>
       {hint&&<div style={{fontSize:11,color:C.g400,marginTop:3}}>{hint}</div>}
-      {error&&<div style={{color:C.red,fontSize:12,marginTop:3}}>{error}</div>}
     </div>
   );
 }
-function Textarea({label,...props}) {
-  return (
-    <div style={{marginBottom:13}}>
-      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
-      <textarea {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",resize:"vertical",boxSizing:"border-box",...props.style}}/>
-    </div>
-  );
-}
+
 function Select({label,children,...props}) {
   return (
-    <div style={{marginBottom:13}}>
-      {label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:C.g700,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>}
-      <select {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",background:C.white,...props.style}}>{children}</select>
+    <div style={{marginBottom:12}}>
+      {label&&<div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>{label}</div>}
+      <select {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",background:C.white,color:C.g900,...props.style}}>{children}</select>
     </div>
   );
 }
-function Btn({children,variant="primary",loading,full,sm,onClick,style={},disabled}) {
-  const vs={
-    primary:{background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,boxShadow:`0 3px 12px ${C.r400}44`},
-    secondary:{background:C.r50,color:C.r500,border:`1px solid ${C.r100}`},
-    ghost:{background:"transparent",color:C.g600,border:`1px solid ${C.g200}`},
-    danger:{background:C.redL,color:C.red,border:`1px solid #fca5a5`},
-    green:{background:C.greenL,color:"#065f46",border:`1px solid #6ee7b7`},
-    gold:{background:C.goldL,color:"#92400e",border:`1px solid #fcd34d`},
-    blue:{background:C.blueL,color:"#1e40af",border:`1px solid #93c5fd`},
-    dark:{background:C.r900,color:C.white},
-  };
+
+function Textarea({label,...props}) {
   return (
-    <button onClick={onClick} disabled={loading||disabled}
-      style={{padding:sm?"6px 13px":"10px 18px",borderRadius:9,border:"none",fontWeight:600,fontSize:sm?12:14,cursor:(loading||disabled)?"not-allowed":"pointer",display:"inline-flex",alignItems:"center",gap:6,width:full?"100%":"auto",justifyContent:full?"center":"flex-start",opacity:(loading||disabled)?0.6:1,...vs[variant],...style}}>
+    <div style={{marginBottom:12}}>
+      {label&&<div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>{label}</div>}
+      <textarea {...props} style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",resize:"vertical",background:C.white,color:C.g900,...props.style}}/>
+    </div>
+  );
+}
+
+function Btn({children,variant="primary",full=false,sm=false,loading=false,onClick,disabled=false,style={}}) {
+  const variants={
+    primary:{background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,border:"none"},
+    secondary:{background:C.g100,color:C.g700,border:`1px solid ${C.g200}`},
+    ghost:{background:"transparent",color:C.g600,border:`1px solid ${C.g200}`},
+    danger:{background:C.redL,color:C.red,border:`1px solid ${C.red}33`},
+    green:{background:C.greenL,color:C.greenD,border:`1px solid ${C.green}33`},
+    gold:{background:C.goldL,color:C.gold2,border:`1px solid ${C.gold}33`},
+    blue:{background:C.blueL,color:C.blueD,border:`1px solid ${C.blue}33`},
+    dark:{background:C.g700,color:C.white,border:"none"},
+  };
+  const v=variants[variant]||variants.primary;
+  return (
+    <button onClick={onClick} disabled={disabled||loading}
+      style={{...v,padding:sm?"6px 12px":"10px 18px",borderRadius:10,fontSize:sm?12:14,fontWeight:600,cursor:disabled||loading?"not-allowed":"pointer",opacity:disabled?0.6:1,display:"flex",alignItems:"center",gap:6,width:full?"100%":"auto",justifyContent:"center",...style}}>
       {loading&&<span style={{width:13,height:13,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
       {children}
     </button>
   );
 }
+
 function StatCard({icon,label,value,sub,accent=C.r400,onClick}) {
   return (
-    <div onClick={onClick} style={{background:C.white,borderRadius:15,padding:"16px 20px",border:`1px solid ${C.g100}`,flex:1,minWidth:0,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",cursor:onClick?"pointer":"default"}}>
+    <div onClick={onClick} style={{background:C.white,borderRadius:15,padding:"16px 20px",border:`1px solid ${C.g100}`,flex:1,minWidth:140,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",cursor:onClick?"pointer":"default"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
           <div style={{fontSize:11,color:C.g600,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6,marginBottom:4}}>{label}</div>
-          <div style={{fontSize:24,fontWeight:700,color:C.g900,lineHeight:1,fontFamily:"Georgia,serif"}}>{value}</div>
+          <div style={{fontSize:22,fontWeight:700,color:C.g900,lineHeight:1,fontFamily:"Georgia,serif"}}>{value}</div>
           {sub&&<div style={{fontSize:12,color:C.green,marginTop:3,fontWeight:500}}>{sub}</div>}
         </div>
         <div style={{width:40,height:40,borderRadius:10,background:accent+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{icon}</div>
@@ -302,6 +332,7 @@ function StatCard({icon,label,value,sub,accent=C.r400,onClick}) {
     </div>
   );
 }
+
 function LevelBadge({levelKey,levels}) {
   const b=getLevelBadge(levelKey,levels);
   const colors={basico:[C.g100,C.g600],vip1:["#fef3c7","#92400e"],vip2:["#f3f4f6","#374151"],vip3:[C.goldL,C.gold2]};
@@ -309,8 +340,7 @@ function LevelBadge({levelKey,levels}) {
   return <span style={{padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:bg,color:fg,whiteSpace:"nowrap"}}>{b.icon} {b.name}</span>;
 }
 
-
-// ══ CONFETTI + CELEBRAÇÃO ════════════════════════════════════════════════════
+// ══ CONFETTI + CELEBRAÇÃO (para o cliente) ════════════════════════════════════
 function Confetti({active}) {
   if(!active) return null;
   const pieces=Array.from({length:22},(_,i)=>({
@@ -417,7 +447,7 @@ function OnboardingScreen({user,onDone}) {
   const create=async()=>{
     if(!name.trim()){setErr("Nome da loja é obrigatório");return;}
     setLoad(true);
-    const {data,error}=await api.createStore(user.id,name.trim(),slug||"loja-"+Date.now(),phone.trim());
+    const {data,error}=await api.createStore(user.id,name.trim(),slug||"loja-"+Date.now(),rawPhone(phone));
     setLoad(false);
     if(error){setErr(error.message);return;}
     onDone(data);
@@ -438,56 +468,89 @@ function OnboardingScreen({user,onDone}) {
   );
 }
 
-// ══ CAMPANHA — modal envio em massa ═══════════════════════════════════════════
+// ══ CAMPANHA MODAL ═══════════════════════════════════════════════════════════
 function CampaignModal({clients,store,onClose,showToast}) {
   const settings = store.settings||DEFAULT_SETTINGS;
+  const [searchQ,setSearchQ]=useState("");
+  const [selectedIds,setSelectedIds]=useState(new Set());
   const [filter,setFilter]=useState("all");
-  const [excludeIds,setExcludeIds]=useState(new Set());
-  const [msgType,setMsgType]=useState("custom");
-  const [msg,setMsg]=useState(settings.msg_custom||"");
+  const [msgType,setMsgType]=useState("points");
+  const [msg,setMsg]=useState(settings.msg_points||DEFAULT_SETTINGS.msg_points);
   const [ageMin,setAgeMin]=useState(""); const [ageMax,setAgeMax]=useState("");
   const [inactiveDays,setInactiveDays]=useState(settings.inactive_days||30);
+  const [birthMonthFilter,setBirthMonthFilter]=useState("");
+  const [hourFilter,setHourFilter]=useState("");
   const [sending,setSending]=useState(false); const [sent,setSent]=useState(0);
 
-  const filtered = useMemo(()=>{
-    let list=[...clients];
-    if(filter==="birthday") list=list.filter(c=>isBirthday(c.dob));
-    if(filter==="inactive") list=list.filter(c=>daysDiff(c.last_visit)>=(inactiveDays||30));
-    if(filter==="vip")      list=list.filter(c=>c.level&&c.level!=="basico");
-    if(filter==="basico")   list=list.filter(c=>!c.level||c.level==="basico");
-    if(filter==="age")      list=list.filter(c=>{const a=age(c.dob);return a!==null&&a>=(ageMin||0)&&a<=(ageMax||999);});
-    return list.filter(c=>!excludeIds.has(c.id));
-  },[clients,filter,excludeIds,inactiveDays,ageMin,ageMax]);
+  const months=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
   const msgTemplates = {
-    custom:settings.msg_custom||"",
-    points:settings.msg_points||DEFAULT_SETTINGS.msg_points,
-    birthday:settings.msg_birthday||DEFAULT_SETTINGS.msg_birthday,
-    inactive:settings.msg_inactive||DEFAULT_SETTINGS.msg_inactive,
-    ranking:settings.msg_ranking||DEFAULT_SETTINGS.msg_ranking,
+    points:  settings.msg_points  || DEFAULT_SETTINGS.msg_points,
+    birthday:settings.msg_birthday|| DEFAULT_SETTINGS.msg_birthday,
+    inactive:settings.msg_inactive|| DEFAULT_SETTINGS.msg_inactive,
+    complete:settings.msg_complete|| DEFAULT_SETTINGS.msg_complete,
+    ranking: settings.msg_ranking || DEFAULT_SETTINGS.msg_ranking,
+    custom:  settings.msg_custom  || DEFAULT_SETTINGS.msg_custom,
   };
 
-  const buildMsg = (client,rank) => {
-    const level=getLevelBadge(client.level,settings.levels);
-    const pos=clients.filter(c=>!excludeIds.has(c.id)).sort((a,b)=>b.points-a.points).findIndex(c=>c.id===client.id)+1;
-    const leader=clients[0];
+  const allFiltered = useMemo(()=>{
+    let list=[...clients];
+    if(filter==="birthday")    list=list.filter(c=>isBirthday(c.dob));
+    if(filter==="inactive")    list=list.filter(c=>daysDiff(c.last_visit)>=(inactiveDays||30));
+    if(filter==="vip")         list=list.filter(c=>c.level&&c.level!=="basico");
+    if(filter==="basico")      list=list.filter(c=>!c.level||c.level==="basico");
+    if(filter==="age")         list=list.filter(c=>{const a=age(c.dob);return a!==null&&a>=(ageMin||0)&&a<=(ageMax||999);});
+    if(filter==="birthmonth"&&birthMonthFilter!=="") list=list.filter(c=>birthMonth(c.dob)===Number(birthMonthFilter));
+    if(filter==="hour"&&hourFilter!=="") list=list.filter(c=>{
+      // approximate: check last_visit hour
+      return hourOfDay(c.last_visit)===Number(hourFilter);
+    });
+    return list;
+  },[clients,filter,inactiveDays,ageMin,ageMax,birthMonthFilter,hourFilter]);
+
+  const searchFiltered = useMemo(()=>{
+    if(!searchQ) return allFiltered;
+    return allFiltered.filter(c=>c.name.toLowerCase().includes(searchQ.toLowerCase())||c.phone.includes(searchQ));
+  },[allFiltered,searchQ]);
+
+  useEffect(()=>{
+    setSelectedIds(new Set(allFiltered.map(c=>c.id)));
+  },[filter,inactiveDays,ageMin,ageMax,birthMonthFilter,hourFilter]);
+
+  const toggleClient=(id)=>{
+    setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  };
+  const selectAll=()=>setSelectedIds(new Set(searchFiltered.map(c=>c.id)));
+  const clearAll=()=>setSelectedIds(new Set());
+
+  const buildMsg = (client) => {
+    const level=getLevelBadge(client.level||"basico",settings.levels||DEFAULT_SETTINGS.levels);
+    const sorted=[...clients].sort((a,b)=>b.points-a.points);
+    const pos=sorted.findIndex(c=>c.id===client.id)+1;
+    const leader=sorted[0];
     return (msg||"")
       .replace(/\{nome\}/g,client.name.split(" ")[0])
       .replace(/\{saldo\}/g,fmtPts(client.points))
+      .replace(/\{pontos\}/g,fmtPts(client.points))
       .replace(/\{nivel\}/g,level.name)
-      .replace(/\{link\}/g,magicLink(client.magic_token))
+      .replace(/\{link\}/g,magicLink(client.magic_token||""))
       .replace(/\{loja\}/g,store.name)
-      .replace(/\{dias\}/g,daysDiff(client.last_visit))
+      .replace(/\{dias\}/g,String(daysDiff(client.last_visit)))
       .replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
-      .replace(/\{posicao\}/g,pos)
+      .replace(/\{posicao\}/g,String(pos))
       .replace(/\{falta\}/g,fmtPts(Math.max(0,(leader?.points||0)-client.points)))
-      .replace(/\{pontos\}/g,fmtPts(client.points));
+      .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50));
   };
 
+  const selectedClients = clients.filter(c=>selectedIds.has(c.id));
+  const previewClient = selectedClients[0]||clients[0];
+
   const sendAll = async () => {
+    if(!selectedClients.length){showToast("Selecione pelo menos um cliente","error");return;}
+    if(!msg||!msg.trim()){showToast("Digite uma mensagem","error");return;}
     setSending(true);
     let count=0;
-    for(const c of filtered){
+    for(const c of selectedClients){
       const built=buildMsg(c);
       window.open(waLink(c.phone,built),"_blank");
       count++;
@@ -499,85 +562,102 @@ function CampaignModal({clients,store,onClose,showToast}) {
     onClose();
   };
 
-  const toggleExclude=(id)=>{
-    const n=new Set(excludeIds);
-    n.has(id)?n.delete(id):n.add(id);
-    setExcludeIds(n);
-  };
-
   return (
     <Modal title="📢 Campanha — Enviar mensagens" onClose={onClose} wide>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-        {/* Esquerda: filtros */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+        {/* Esquerda: público */}
         <div>
-          <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>1. Selecionar público</div>
-          <Select value={filter} onChange={e=>setFilter(e.target.value)}>
+          <div style={{fontSize:12,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>1. Selecionar público</div>
+          <Select value={filter} onChange={e=>{setFilter(e.target.value);setBirthMonthFilter("");setHourFilter("");}}>
             <option value="all">👥 Todos os clientes ({clients.length})</option>
             <option value="birthday">🎂 Aniversariantes de hoje</option>
-            <option value="inactive">😴 Inativos (não compram há X dias)</option>
+            <option value="birthmonth">📅 Por mês de aniversário</option>
+            <option value="inactive">😴 Inativos (X dias)</option>
             <option value="vip">⭐ Clientes VIP</option>
             <option value="basico">👤 Clientes Básicos</option>
             <option value="age">🎂 Por faixa etária</option>
+            <option value="hour">⏰ Por horário de visita</option>
           </Select>
-          {filter==="inactive"&&<Input label="Dias sem comprar" type="number" value={inactiveDays} onChange={e=>setInactiveDays(e.target.value)} placeholder="30"/>}
-          {filter==="age"&&<div style={{display:"flex",gap:8}}><Input label="Idade mínima" type="number" value={ageMin} onChange={e=>setAgeMin(e.target.value)} placeholder="18"/><Input label="Idade máxima" type="number" value={ageMax} onChange={e=>setAgeMax(e.target.value)} placeholder="40"/></div>}
 
-          {/* Lista para excluir */}
-          <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:6,marginTop:8}}>Desmarcar para excluir da campanha:</div>
-          <div style={{maxHeight:200,overflow:"auto",border:`1px solid ${C.g200}`,borderRadius:9}}>
-            {filtered.map(c=>(
-              <div key={c.id} onClick={()=>toggleExclude(c.id)} style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:9,cursor:"pointer",borderBottom:`1px solid ${C.g100}`,background:excludeIds.has(c.id)?C.redL:"transparent"}}>
-                <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${excludeIds.has(c.id)?C.red:C.r400}`,background:excludeIds.has(c.id)?"transparent":C.r400,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {!excludeIds.has(c.id)&&<span style={{color:C.white,fontSize:11}}>✓</span>}
-                </div>
-                <div style={{fontSize:13,color:excludeIds.has(c.id)?C.red:C.g900}}>{c.name}</div>
-                <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
-              </div>
-            ))}
-            {filtered.length===0&&<div style={{padding:20,textAlign:"center",color:C.g400,fontSize:13}}>Nenhum cliente neste filtro</div>}
+          {filter==="inactive"&&<Input label="Dias sem comprar" type="number" value={inactiveDays} onChange={e=>setInactiveDays(e.target.value)} placeholder="30"/>}
+          {filter==="age"&&<div style={{display:"flex",gap:8}}><Input label="Idade mín." type="number" value={ageMin} onChange={e=>setAgeMin(e.target.value)} placeholder="18"/><Input label="Idade máx." type="number" value={ageMax} onChange={e=>setAgeMax(e.target.value)} placeholder="60"/></div>}
+          {filter==="birthmonth"&&(
+            <Select label="Mês de aniversário" value={birthMonthFilter} onChange={e=>setBirthMonthFilter(e.target.value)}>
+              <option value="">Selecione o mês</option>
+              {months.map((m,i)=><option key={i} value={i}>{m}</option>)}
+            </Select>
+          )}
+          {filter==="hour"&&(
+            <Select label="Horário de visita" value={hourFilter} onChange={e=>setHourFilter(e.target.value)}>
+              <option value="">Selecione o horário</option>
+              {Array.from({length:16},(_,i)=>i+8).map(h=><option key={h} value={h}>{String(h).padStart(2,"0")}:00 — {String(h+1).padStart(2,"0")}:00</option>)}
+            </Select>
+          )}
+
+          {/* Busca dentro da lista */}
+          <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 Buscar por nome ou telefone..." style={{width:"100%",padding:"7px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:13,marginBottom:8,outline:"none"}}/>
+
+          {/* Ações de seleção */}
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
+            <button onClick={selectAll} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`1px solid ${C.r300}`,background:C.r50,color:C.r500,cursor:"pointer",fontWeight:600}}>Selecionar todos</button>
+            <button onClick={clearAll} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.white,color:C.g600,cursor:"pointer"}}>Limpar</button>
+            <span style={{fontSize:11,color:C.g600,alignSelf:"center",marginLeft:"auto"}}><strong style={{color:C.r500}}>{selectedIds.size}</strong> selecionados</span>
           </div>
-          <div style={{marginTop:8,fontSize:12,color:C.g600}}>
-            <strong style={{color:C.r500}}>{filtered.length}</strong> clientes selecionados
+
+          {/* Lista de clientes — NÃO SOME ao desmarcar */}
+          <div style={{maxHeight:220,overflow:"auto",border:`1px solid ${C.g200}`,borderRadius:9}}>
+            {searchFiltered.map(c=>{
+              const sel=selectedIds.has(c.id);
+              return (
+                <div key={c.id} onClick={()=>toggleClient(c.id)} style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:9,cursor:"pointer",borderBottom:`1px solid ${C.g100}`,background:sel?C.r50:"transparent",transition:"background 0.15s"}}>
+                  <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${sel?C.r400:C.g300}`,background:sel?C.r400:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {sel&&<span style={{color:C.white,fontSize:10}}>✓</span>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,color:C.g900,fontWeight:sel?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
+                    <div style={{fontSize:10,color:C.g400}}>{fmtPts(c.points)} pts</div>
+                  </div>
+                  <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
+                </div>
+              );
+            })}
+            {searchFiltered.length===0&&<div style={{padding:20,textAlign:"center",color:C.g400,fontSize:13}}>Nenhum cliente encontrado</div>}
           </div>
         </div>
 
         {/* Direita: mensagem */}
         <div>
-          <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>2. Escolher mensagem</div>
+          <div style={{fontSize:12,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>2. Escolher mensagem</div>
           <Select value={msgType} onChange={e=>{setMsgType(e.target.value);setMsg(msgTemplates[e.target.value]||"");}}>
-            <option value="custom">✏️ Mensagem personalizada</option>
             <option value="points">⭐ Notificação de pontos</option>
             <option value="birthday">🎂 Feliz aniversário</option>
             <option value="inactive">😴 Chamar inativos</option>
+            <option value="complete">⚠️ Completar cadastro</option>
             <option value="ranking">🏆 Posição no ranking</option>
+            <option value="custom">✏️ Mensagem personalizada</option>
           </Select>
-          <Textarea label="Mensagem (edite à vontade)" value={msg} onChange={e=>setMsg(e.target.value)} rows={8} placeholder="Digite a mensagem..."/>
-          <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:11,color:C.r500,lineHeight:1.7}}>
-            <strong>Variáveis:</strong> {"{nome}"} {"{saldo}"} {"{nivel}"} {"{link}"} {"{loja}"} {"{dias}"} {"{brinde}"} {"{posicao}"} {"{falta}"}
+          <Textarea label="Mensagem (edite à vontade)" value={msg} onChange={e=>setMsg(e.target.value)} rows={7} placeholder="Digite a mensagem..."/>
+          <div style={{padding:"8px 10px",background:C.r50,borderRadius:8,fontSize:11,color:C.r500,lineHeight:1.7,marginBottom:8}}>
+            <strong>Variáveis:</strong> {"{nome}"} {"{saldo}"} {"{nivel}"} {"{link}"} {"{loja}"} {"{dias}"} {"{brinde}"} {"{posicao}"} {"{falta}"} {"{bonus}"}
           </div>
-
-          {/* Preview */}
-          {filtered.length>0&&msg&&(
-            <div style={{marginTop:12,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #6ee7b7",borderRadius:9}}>
-              <div style={{fontSize:11,fontWeight:600,color:C.green,marginBottom:4}}>📱 Preview (1º cliente):</div>
-              <div style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",lineHeight:1.5}}>{buildMsg(previewClient)}</div>
-            </div>
+          {previewClient&&msg&&(
+            <WAPreview msg={buildMsg(previewClient)} storeName={store.name}/>
           )}
         </div>
       </div>
 
-      <div style={{marginTop:20,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
-        {sending&&<span style={{fontSize:13,color:C.g600}}>Enviando {sent}/{filtered.length}...</span>}
+      <div style={{marginTop:20,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center",borderTop:`1px solid ${C.g100}`,paddingTop:16}}>
+        {sending&&<span style={{fontSize:13,color:C.g600}}>Enviando {sent}/{selectedIds.size}...</span>}
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-        <Btn loading={sending} disabled={filtered.length===0||!msg} onClick={sendAll}>
-          📤 Enviar para {filtered.length} cliente{filtered.length!==1?"s":""}
+        <Btn loading={sending} disabled={selectedIds.size===0||!msg||!msg.trim()} onClick={sendAll}>
+          📤 Enviar para {selectedIds.size} cliente{selectedIds.size!==1?"s":""}
         </Btn>
       </div>
     </Modal>
   );
 }
 
-// ══ RANKING PANEL (cliente) ═══════════════════════════════════════════════════
+// ══ RANKING PANEL (cliente) ════════════════════════════════════════════════════
 function RankingPanel({client,allClients,settings}) {
   const levels=settings?.levels||DEFAULT_SETTINGS.levels;
   const sorted=[...allClients].sort((a,b)=>b.points-a.points);
@@ -589,10 +669,8 @@ function RankingPanel({client,allClients,settings}) {
   const nextLevelKey=levelKeys[levelKeys.indexOf(myLevel)+1];
   const nextLevel=nextLevelKey?levels[nextLevelKey]:null;
   const pctToNext=nextLevel?Math.min(100,Math.round(((client.points-myInfo.min)/(nextLevel.min-myInfo.min))*100)):100;
-
   return (
     <div style={{padding:"0 0 20px"}}>
-      {/* Minha posição */}
       <div style={{background:`linear-gradient(135deg,${C.r800},${C.r600})`,borderRadius:18,padding:20,marginBottom:16,color:C.white,textAlign:"center"}}>
         <div style={{fontSize:12,color:C.r200,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>Sua posição</div>
         <div style={{fontSize:52,fontWeight:700,fontFamily:"Georgia,serif",lineHeight:1}}>#{myPos}</div>
@@ -601,8 +679,6 @@ function RankingPanel({client,allClients,settings}) {
           {getLevelBadge(myLevel,levels).icon} {myInfo.name}
         </div>
       </div>
-
-      {/* Progresso para próximo nível */}
       {nextLevel&&(
         <div style={{background:C.white,borderRadius:14,padding:16,marginBottom:14,border:`1px solid ${C.g100}`}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
@@ -610,42 +686,18 @@ function RankingPanel({client,allClients,settings}) {
             <span style={{fontSize:12,color:C.g600}}>{fmtPts(client.points)}/{fmtPts(nextLevel.min)}</span>
           </div>
           <div style={{background:C.g100,borderRadius:8,height:10,overflow:"hidden",marginBottom:8}}>
-            <div style={{width:`${pctToNext}%`,height:"100%",background:`linear-gradient(90deg,${C.r400},${C.r300})`,borderRadius:8,transition:"width 1s ease"}}/>
+            <div style={{width:`${pctToNext}%`,height:"100%",background:`linear-gradient(90deg,${C.r400},${C.r300})`,borderRadius:8}}/>
           </div>
-          <div style={{fontSize:12,color:C.r500}}>Faltam <strong>{fmtPts(nextLevel.min-client.points)}</strong> pts · Benefícios: {nextLevel.benefits}</div>
+          <div style={{fontSize:12,color:C.r500}}>Faltam <strong>{fmtPts(nextLevel.min-client.points)}</strong> pts · {nextLevel.benefits}</div>
         </div>
       )}
-
-      {/* Diferença para o líder */}
       {leader&&leader.id!==client.id&&(
-        <div style={{background:C.goldL,borderRadius:12,padding:"12px 16px",marginBottom:14,border:`1px solid #fcd34d`}}>
+        <div style={{background:C.goldL,borderRadius:12,padding:"12px 16px",marginBottom:14,border:"1px solid #fcd34d"}}>
           <div style={{fontSize:12,fontWeight:600,color:"#92400e",marginBottom:2}}>🏆 Líder: {leader.name.split(" ")[0]}</div>
-          <div style={{fontSize:13,color:"#78350f"}}>Faltam <strong>{fmtPts(leader.points-client.points)}</strong> pts para alcançar o 1º lugar</div>
-          <div style={{fontSize:12,color:"#92400e",marginTop:4}}>Benefícios VIP Ouro: {getLevelInfo("vip3",levels).benefits}</div>
+          <div style={{fontSize:13,color:"#78350f"}}>Faltam <strong>{fmtPts(leader.points-client.points)}</strong> pts para o 1º lugar</div>
         </div>
       )}
-
-      {/* Níveis e benefícios */}
-      <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8}}>🏅 Níveis e benefícios</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {levelKeys.map(key=>{
-          const l=levels[key];
-          const isMe=myLevel===key;
-          const icons={basico:"👤",vip1:"🥉",vip2:"🥈",vip3:"🏆"};
-          return (
-            <div key={key} style={{padding:"12px 14px",borderRadius:12,background:isMe?C.r50:C.white,border:`1.5px solid ${isMe?C.r300:C.g200}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                <span style={{fontWeight:700,fontSize:14,color:isMe?C.r500:C.g900}}>{icons[key]||"👤"} {l.name} {isMe&&"← você"}</span>
-                <span style={{fontSize:11,color:C.g600}}>{fmtPts(l.min)}{l.max<999999?` — ${fmtPts(l.max)}`:"+"}  pts</span>
-              </div>
-              <div style={{fontSize:12,color:C.g600}}>{l.benefits}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Top 5 */}
-      <div style={{fontSize:13,fontWeight:700,color:C.g700,marginTop:16,marginBottom:8}}>📊 Top 5 clientes</div>
+      <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:8}}>📊 Top 5 clientes</div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         {sorted.slice(0,5).map((c,i)=>{
           const isMe=c.id===client.id;
@@ -677,13 +729,21 @@ function AdminPanel({user,store,onSignOut}) {
   const [selClient,setSel]=useState(null);
   const [searchQ,setSearch]=useState("");
   const [selected,setSelected]=useState(new Set());
-  const [clientForm,setCF]=useState({name:"",phone:"",email:"",dob:""});
+  const [clientForm,setCF]=useState({name:"",phone:"",email:"",dob:"",notes:""});
+  const [editForm,setEF]=useState({name:"",phone:"",email:"",dob:"",notes:""});
   const [pointsForm,setPF]=useState({value:"",note:""});
   const [rewardForm,setRF]=useState({name:"",points_cost:"",type:"product",description:"",tag:""});
-  const [settings,setSettings]=useState(store.settings||DEFAULT_SETTINGS);
+  const [settings,setSettings]=useState({...DEFAULT_SETTINGS,...(store.settings||{})});
   const [savingSett,setSavingSett]=useState(false);
   const [showCampaign,setShowCampaign]=useState(false);
-  const [celebration,setCelebration]=useState(null);
+  // Filtro de datas na Central de Vendas
+  const [dateFilter,setDateFilter]=useState("month");
+  const [dateFrom,setDateFrom]=useState("");
+  const [dateTo,setDateTo]=useState("");
+  // Ação rápida de pontuar na Central de Vendas
+  const [quickSearch,setQuickSearch]=useState("");
+  const [quickClient,setQuickClient]=useState(null);
+  const [quickValue,setQuickValue]=useState("");
 
   const showToast=(msg,type="success")=>setToast({msg,type});
 
@@ -696,39 +756,91 @@ function AdminPanel({user,store,onSignOut}) {
 
   useEffect(()=>{load();},[load]);
 
-  // Auto-check aniversariantes
   useEffect(()=>{
     if(!clients.length) return;
     const birthdays=clients.filter(c=>isBirthday(c.dob));
-    if(birthdays.length>0) showToast(`🎂 ${birthdays.length} aniversariante(s) hoje! Acesse Clientes para enviar parabéns.`,"warn");
+    if(birthdays.length>0) showToast(`🎂 ${birthdays.length} aniversariante(s) hoje!`,"warn");
   },[clients]);
 
+  // ── Filtro de datas ──
+  const filteredTxs = useMemo(()=>{
+    const now=new Date();
+    let from=null, to=null;
+    if(dateFilter==="today"){from=new Date(now.getFullYear(),now.getMonth(),now.getDate());to=new Date(from.getTime()+86400000);}
+    else if(dateFilter==="week"){from=new Date(now-7*86400000);to=new Date();}
+    else if(dateFilter==="month"){from=new Date(now.getFullYear(),now.getMonth(),1);to=new Date();}
+    else if(dateFilter==="year"){from=new Date(now.getFullYear(),0,1);to=new Date();}
+    else if(dateFilter==="custom"){from=dateFrom?new Date(dateFrom):null;to=dateTo?new Date(dateTo+"T23:59:59"):null;}
+    return txs.filter(t=>{
+      if(!from&&!to) return true;
+      const d=new Date(t.created_at);
+      if(from&&d<from) return false;
+      if(to&&d>to) return false;
+      return true;
+    });
+  },[txs,dateFilter,dateFrom,dateTo]);
+
+  const totalSales    = filteredTxs.filter(t=>t.type==="earn").reduce((a,t)=>a+(t.amount_paid||0),0);
+  const salesCount    = filteredTxs.filter(t=>t.type==="earn").length;
+  const totalPts      = clients.reduce((a,c)=>a+(c.points||0),0);
+  const vipCount      = clients.filter(c=>c.level&&c.level!=="basico").length;
+  const redeemCount   = txs.filter(t=>t.type==="redeem").length;
+  const inactiveCount = clients.filter(c=>daysDiff(c.last_visit)>=(settings.inactive_days||30)).length;
+  const birthdayCount = clients.filter(c=>isBirthday(c.dob)).length;
+
   const filtered=useMemo(()=>clients.filter(c=>
-    c.name.toLowerCase().includes(searchQ.toLowerCase())||c.phone.includes(searchQ)
+    c.name.toLowerCase().includes(searchQ.toLowerCase())||
+    (c.phone||"").includes(searchQ)
   ),[clients,searchQ]);
 
-  const totalPts=clients.reduce((a,c)=>a+(c.points||0),0);
-  const vipCount=clients.filter(c=>c.level&&c.level!=="basico").length;
-  const todayEarn=txs.filter(t=>t.type==="earn"&&t.created_at?.startsWith(today())).reduce((a,t)=>a+t.points,0);
-  const redeemCount=txs.filter(t=>t.type==="redeem").length;
-  const inactiveCount=clients.filter(c=>daysDiff(c.last_visit)>=(settings.inactive_days||30)).length;
-  const birthdayCount=clients.filter(c=>isBirthday(c.dob)).length;
+  const quickFiltered=useMemo(()=>{
+    if(!quickSearch||quickSearch.length<2) return clients.slice(0,8);
+    return clients.filter(c=>c.name.toLowerCase().includes(quickSearch.toLowerCase())||(c.phone||"").includes(quickSearch)).slice(0,8);
+  },[clients,quickSearch]);
 
+  // ── Handlers ──
   const handleAddClient=async()=>{
     if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
     const {data,error}=await api.createClient(store.id,{...clientForm,phone:rawPhone(clientForm.phone)});
     if(error){showToast(error.message,"error");return;}
     setClients(p=>[data,...p]);
-    // Verificar cadastro incompleto e oferecer bônus
     if(!clientForm.email||!clientForm.dob){
       const bonusPts=settings.bonus_complete_points||50;
       const completeMsg=(settings.msg_complete||DEFAULT_SETTINGS.msg_complete)
-        .replace(/\{nome\}/g,data.name.split(" ")[0]).replace(/\{link\}/g,magicLink(data.magic_token)).replace(/\{bonus\}/g,String(bonusPts)).replace(/\{loja\}/g,store.name);
+        .replace(/\{nome\}/g,data.name.split(" ")[0])
+        .replace(/\{link\}/g,magicLink(data.magic_token||""))
+        .replace(/\{bonus\}/g,String(bonusPts))
+        .replace(/\{loja\}/g,store.name);
       setTimeout(()=>window.open(waLink(data.phone,completeMsg),"_blank"),500);
     }
-    setCF({name:"",phone:"",email:"",dob:""});
+    setCF({name:"",phone:"",email:"",dob:"",notes:""});
     setModal(null);
     showToast("✅ Cliente cadastrado!");
+  };
+
+  const handleEditClient=async()=>{
+    if(!selClient) return;
+    const wasIncomplete=!selClient.email||!selClient.dob;
+    const nowComplete=!!(editForm.email||selClient.email)&&!!(editForm.dob||selClient.dob);
+    const {data,error}=await api.updateClient(selClient.id,{
+      name:editForm.name||selClient.name,
+      phone:rawPhone(editForm.phone||selClient.phone),
+      email:editForm.email||selClient.email||"",
+      dob:editForm.dob||selClient.dob||"",
+      notes:editForm.notes!=null?editForm.notes:(selClient.notes||""),
+    });
+    if(error){showToast(error.message,"error");return;}
+    // Bônus de cadastro completo pelo lojista
+    if(wasIncomplete&&nowComplete&&!selClient.profile_completed){
+      const bonusPts=settings.bonus_complete_points||50;
+      await api.addBonusPoints(store.id,selClient.id,bonusPts,"Bônus cadastro completo (loja)");
+      await api.updateClient(selClient.id,{profile_completed:true});
+      showToast(`✅ Cadastro completo! Cliente ganhou ${bonusPts} pontos!`);
+    } else {
+      showToast("✅ Cadastro atualizado!");
+    }
+    await load();
+    setModal(null);setSel(null);
   };
 
   const handleAddPoints=async()=>{
@@ -739,26 +851,46 @@ function AdminPanel({user,store,onSignOut}) {
     const newPts=data?.newPts||selClient.points+pts;
     const newLevel=getLevel(newPts,settings.levels||DEFAULT_SETTINGS.levels);
     const levelName=getLevelInfo(newLevel,settings.levels||DEFAULT_SETTINGS.levels).name;
-    // Mensagem automática WhatsApp com link mágico
     const waMsg=(settings.msg_points||DEFAULT_SETTINGS.msg_points)
       .replace(/\{nome\}/g,selClient.name.split(" ")[0])
       .replace(/\{pontos\}/g,fmtPts(pts))
       .replace(/\{saldo\}/g,fmtPts(newPts))
       .replace(/\{nivel\}/g,levelName)
-      .replace(/\{link\}/g,magicLink(selClient.magic_token))
+      .replace(/\{link\}/g,magicLink(selClient.magic_token||""))
       .replace(/\{loja\}/g,store.name);
     await load();
-    setModal(null);setPF({value:"",note:""});
-    // Celebração visual com confete!
-    setCelebration({pts,newPts,clientName:selClient.name,newLevel,prevLevel:selClient.level||"basico"});
-    setTimeout(()=>window.open(waLink(selClient.phone,waMsg),"_blank"),900);
+    setModal(null);setPF({value:"",note:""});setSel(null);
+    // Confirmação simples pro lojista (sem celebração — celebração é pro cliente)
+    showToast(`✅ ${fmtPts(pts)} pontos adicionados para ${selClient.name.split(" ")[0]}!`);
+    setTimeout(()=>window.open(waLink(selClient.phone,waMsg),"_blank"),400);
+  };
+
+  const handleQuickPoints=async()=>{
+    if(!quickClient||!quickValue||parseFloat(quickValue)<=0){showToast("Selecione o cliente e informe o valor","error");return;}
+    const {data,error}=await api.addPoints(store.id,quickClient.id,parseFloat(quickValue),"",settings);
+    if(error){showToast(error.message,"error");return;}
+    const pts=data?.pts||0;
+    const newPts=data?.newPts||quickClient.points+pts;
+    const newLevel=getLevel(newPts,settings.levels||DEFAULT_SETTINGS.levels);
+    const levelName=getLevelInfo(newLevel,settings.levels||DEFAULT_SETTINGS.levels).name;
+    const waMsg=(settings.msg_points||DEFAULT_SETTINGS.msg_points)
+      .replace(/\{nome\}/g,quickClient.name.split(" ")[0])
+      .replace(/\{pontos\}/g,fmtPts(pts))
+      .replace(/\{saldo\}/g,fmtPts(newPts))
+      .replace(/\{nivel\}/g,levelName)
+      .replace(/\{link\}/g,magicLink(quickClient.magic_token||""))
+      .replace(/\{loja\}/g,store.name);
+    await load();
+    setQuickClient(null);setQuickValue("");setQuickSearch("");
+    showToast(`✅ ${fmtPts(pts)} pontos para ${quickClient.name.split(" ")[0]}!`);
+    setTimeout(()=>window.open(waLink(quickClient.phone,waMsg),"_blank"),400);
   };
 
   const handleAddReward=async()=>{
     if(!rewardForm.name||!rewardForm.points_cost){showToast("Preencha nome e pontos","error");return;}
     const {data,error}=await api.createReward(store.id,{...rewardForm,points_cost:parseInt(rewardForm.points_cost)});
     if(error){showToast(error.message,"error");return;}
-    setRewards(p=>[...p,data]);setRF({name:"",points_cost:"",type:"product",description:""});
+    setRewards(p=>[...p,data]);setRF({name:"",points_cost:"",type:"product",description:"",tag:""});
     setModal(null);showToast("🎁 Recompensa criada!");
   };
 
@@ -770,15 +902,17 @@ function AdminPanel({user,store,onSignOut}) {
 
   const sendBirthday=(c)=>{
     const msg=(settings.msg_birthday||DEFAULT_SETTINGS.msg_birthday)
-      .replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
-      .replace(/\{link\}/g,magicLink(c.magic_token)).replace(/\{loja\}/g,store.name);
+      .replace(/\{nome\}/g,c.name.split(" ")[0])
+      .replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
+      .replace(/\{link\}/g,magicLink(c.magic_token||""))
+      .replace(/\{loja\}/g,store.name);
     window.open(waLink(c.phone,msg),"_blank");
   };
 
   const sendIncomplete=(c)=>{
     const msg=(settings.msg_complete||DEFAULT_SETTINGS.msg_complete)
       .replace(/\{nome\}/g,c.name.split(" ")[0])
-      .replace(/\{link\}/g,magicLink(c.magic_token))
+      .replace(/\{link\}/g,magicLink(c.magic_token||""))
       .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))
       .replace(/\{loja\}/g,store.name);
     window.open(waLink(c.phone,msg),"_blank");
@@ -791,29 +925,31 @@ function AdminPanel({user,store,onSignOut}) {
     const sel=filtered.filter(c=>selected.has(c.id));
     if(!sel.length){showToast("Nenhum cliente selecionado","error");return;}
     sel.forEach((c,i)=>setTimeout(()=>{
-      const msg=(template||settings.msg_custom||"Olá {nome}! 💜")
-        .replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points))
+      const msg=(template||settings.msg_custom||DEFAULT_SETTINGS.msg_custom)
+        .replace(/\{nome\}/g,c.name.split(" ")[0])
+        .replace(/\{saldo\}/g,fmtPts(c.points))
         .replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name)
-        .replace(/\{link\}/g,magicLink(c.magic_token)).replace(/\{loja\}/g,store.name);
+        .replace(/\{link\}/g,magicLink(c.magic_token||""))
+        .replace(/\{loja\}/g,store.name)
+        .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50));
       window.open(waLink(c.phone,msg),"_blank");
     },i*800));
     showToast(`📤 Enviando para ${sel.length} clientes...`);
   };
 
+  // ── Menu ──
   const tabs=[
-    {id:"dashboard",icon:"📊",label:"Dashboard"},
-    {id:"clients",  icon:"👥",label:"Clientes"},
-    {id:"campaign", icon:"📢",label:"Campanhas"},
-    {id:"ranking",  icon:"🏆",label:"Ranking"},
-    {id:"history",  icon:"📋",label:"Histórico"},
-    {id:"rewards",  icon:"🎁",label:"Recompensas"},
-    {id:"settings", icon:"⚙️",label:"Configurações"},
+    {id:"dashboard", icon:"🏠", label:"Central de Vendas"},
+    {id:"clients",   icon:"👥", label:"Clientes & Campanhas"},
+    {id:"ranking",   icon:"🏆", label:"Ranking"},
+    {id:"rewards",   icon:"🎁", label:"Recompensas"},
+    {id:"settings",  icon:"⚙️", label:"Configurações"},
   ];
 
   return (
     <div style={{display:"flex",minHeight:"100vh",background:C.g50}}>
       {/* Sidebar */}
-      <div style={{width:210,background:C.r900,display:"flex",flexDirection:"column",flexShrink:0}}>
+      <div style={{width:220,background:C.r900,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}><Logo size={28}/></div>
         <nav style={{flex:1,padding:"8px 0"}}>
           {tabs.map(t=>(
@@ -843,19 +979,87 @@ function AdminPanel({user,store,onSignOut}) {
         <div style={{flex:1,overflow:"auto",padding:22}}>
           {loading?<Spinner/>:<>
 
-          {/* ── DASHBOARD ── */}
+          {/* ══ CENTRAL DE VENDAS ══ */}
           {tab==="dashboard"&&(
             <div>
-              <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-                <StatCard icon="👥" label="Clientes" value={clients.length} sub={`${vipCount} VIPs`} accent={C.r400}/>
-                <StatCard icon="⭐" label="Pts emitidos" value={fmtPts(totalPts)} accent={C.gold}/>
-                <StatCard icon="🎁" label="Resgates" value={redeemCount} accent={C.green}/>
-                <StatCard icon="💰" label="Pts hoje" value={fmtPts(todayEarn)} accent={C.r300}/>
+              {/* Ação rápida — pontuar cliente */}
+              <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:18,padding:20,marginBottom:20}}>
+                <div style={{color:C.white,fontWeight:700,fontSize:16,marginBottom:4}}>⭐ Registrar pontos</div>
+                <div style={{color:C.r200,fontSize:12,marginBottom:14}}>Busque o cliente e informe o valor da compra</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                  <div style={{flex:2,minWidth:180,position:"relative"}}>
+                    <input value={quickSearch} onChange={e=>{setQuickSearch(e.target.value);setQuickClient(null);}}
+                      placeholder="🔍 Buscar cliente pelo nome ou telefone..."
+                      style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"none",fontSize:14,outline:"none"}}/>
+                    {quickSearch.length>=2&&!quickClient&&(
+                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",zIndex:100,maxHeight:200,overflow:"auto"}}>
+                        {quickFiltered.map(c=>(
+                          <div key={c.id} onClick={()=>{setQuickClient(c);setQuickSearch(c.name);}}
+                            style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                            onMouseEnter={e=>e.currentTarget.style.background=C.r50}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            <div>
+                              <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{c.name}</div>
+                              <div style={{fontSize:11,color:C.g400}}>{fmtPts(c.points)} pts · {fmtPhone(c.phone)}</div>
+                            </div>
+                            <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
+                          </div>
+                        ))}
+                        {quickFiltered.length===0&&<div style={{padding:14,fontSize:13,color:C.g400,textAlign:"center"}}>Nenhum cliente encontrado</div>}
+                        <div onClick={()=>{setModal("addClient");setQuickSearch("");}}
+                          style={{padding:"10px 14px",cursor:"pointer",color:C.r400,fontWeight:600,fontSize:13,borderTop:`1px solid ${C.g100}`,textAlign:"center"}}>
+                          + Cadastrar novo cliente
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{flex:1,minWidth:130}}>
+                    <input value={quickValue} onChange={e=>setQuickValue(e.target.value)} type="number" placeholder="Valor R$"
+                      disabled={!quickClient}
+                      style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"none",fontSize:14,outline:"none",opacity:quickClient?1:0.6}}/>
+                  </div>
+                  <Btn onClick={handleQuickPoints} disabled={!quickClient||!quickValue} style={{background:quickClient?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.1)",color:C.white,border:"1px solid rgba(255,255,255,0.3)"}}>
+                    ⭐ Pontuar
+                  </Btn>
+                </div>
+                {quickClient&&(
+                  <div style={{marginTop:10,padding:"8px 12px",background:"rgba(255,255,255,0.1)",borderRadius:9,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{color:C.white,fontSize:13}}>
+                      <strong>{quickClient.name.split(" ")[0]}</strong> · {fmtPts(quickClient.points)} pts
+                      {quickValue&&parseFloat(quickValue)>0&&<span style={{color:C.r100}}> → +{fmtPts(Math.floor(parseFloat(quickValue)*(settings.points_per_real||3)))} pts</span>}
+                    </div>
+                    <LevelBadge levelKey={quickClient.level||"basico"} levels={settings.levels}/>
+                  </div>
+                )}
               </div>
 
-              {/* Onboarding checklist */}
+              {/* Filtro de datas */}
+              <div style={{background:C.white,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`1px solid ${C.g100}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{fontSize:12,fontWeight:600,color:C.g600}}>📅 Período:</span>
+                {[{v:"today",l:"Hoje"},{v:"week",l:"7 dias"},{v:"month",l:"Este mês"},{v:"year",l:"Este ano"},{v:"all",l:"Tudo"},{v:"custom",l:"Personalizado"}].map(({v,l})=>(
+                  <button key={v} onClick={()=>setDateFilter(v)}
+                    style={{padding:"4px 12px",borderRadius:20,border:`1px solid ${dateFilter===v?C.r400:C.g200}`,background:dateFilter===v?C.r50:"transparent",color:dateFilter===v?C.r500:C.g600,fontSize:12,fontWeight:dateFilter===v?700:400,cursor:"pointer"}}>
+                    {l}
+                  </button>
+                ))}
+                {dateFilter==="custom"&&<>
+                  <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12}}/>
+                  <span style={{fontSize:12,color:C.g400}}>até</span>
+                  <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12}}/>
+                </>}
+              </div>
+
+              {/* Cards principais */}
+              <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+                <StatCard icon="💰" label="Valor em vendas" value={fmtMoney(totalSales)} sub={`${salesCount} vendas`} accent={C.green}/>
+                <StatCard icon="📦" label="Qtd. de vendas" value={salesCount} sub={`${fmtMoney(totalSales/Math.max(salesCount,1))} ticket médio`} accent={C.blue}/>
+                <StatCard icon="👥" label="Clientes" value={clients.length} sub={`${vipCount} VIPs`} accent={C.r400}/>
+                <StatCard icon="⭐" label="Pts emitidos" value={fmtPts(totalPts)} accent={C.gold}/>
+              </div>
+
+              {/* Checklist onboarding */}
               {(()=>{
-                const cl=[{done:true,label:"Conta criada ✓"},{done:clients.length>0,label:"Cadastrar 1º cliente",tab:"clients"},{done:txs.length>0,label:"Registrar 1ª venda",tab:"clients"},{done:rewards.length>0,label:"Criar recompensa",tab:"rewards"}];
+                const cl=[{done:true,label:"Conta criada ✓"},{done:clients.length>0,label:"Cadastrar 1º cliente",tab:"clients"},{done:txs.length>0,label:"Registrar 1ª venda",tab:"dashboard"},{done:rewards.length>0,label:"Criar recompensa",tab:"rewards"}];
                 const done=cl.filter(c=>c.done).length;
                 if(done>=4) return null;
                 return (
@@ -865,7 +1069,8 @@ function AdminPanel({user,store,onSignOut}) {
                       <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,border:`2px solid ${C.r300}`}}>{Math.round(done/4*100)}%</div>
                     </div>
                     {cl.map((c,i)=>(
-                      <div key={i} onClick={!c.done&&c.tab?()=>setTab(c.tab):undefined} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 11px",borderRadius:9,background:c.done?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.07)",marginBottom:6,cursor:!c.done&&c.tab?"pointer":"default",border:`1px solid ${c.done?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"}`}}>
+                      <div key={i} onClick={!c.done&&c.tab?()=>setTab(c.tab):undefined}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"7px 11px",borderRadius:9,background:c.done?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.07)",marginBottom:6,cursor:!c.done&&c.tab?"pointer":"default",border:`1px solid ${c.done?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"}`}}>
                         <span style={{fontSize:15}}>{c.done?"✅":"⭕"}</span>
                         <span style={{fontSize:13,color:c.done?"#6ee7b7":C.r100}}>{c.label}</span>
                         {!c.done&&c.tab&&<span style={{marginLeft:"auto",fontSize:11,color:C.r200}}>→ fazer agora</span>}
@@ -878,30 +1083,30 @@ function AdminPanel({user,store,onSignOut}) {
               {/* Alertas */}
               {birthdayCount>0&&(
                 <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #fcd34d"}}>
-                  <div><div style={{fontWeight:700,color:"#92400e",fontSize:15}}>🎂 {birthdayCount} aniversariante{birthdayCount>1?"s":""} hoje!</div><div style={{fontSize:13,color:"#78350f",marginTop:2}}>Envie uma mensagem especial e fidelize ainda mais!</div></div>
-                  <Btn sm variant="gold" onClick={()=>setTab("clients")}>Ver clientes →</Btn>
+                  <div><div style={{fontWeight:700,color:"#92400e",fontSize:15}}>🎂 {birthdayCount} aniversariante{birthdayCount>1?"s":""} hoje!</div><div style={{fontSize:13,color:"#78350f",marginTop:2}}>Envie uma mensagem especial!</div></div>
+                  <Btn sm variant="gold" onClick={()=>setTab("clients")}>Ver →</Btn>
                 </div>
               )}
               {inactiveCount>0&&(
                 <div style={{background:C.blueL,borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid #93c5fd`}}>
-                  <div><div style={{fontWeight:700,color:"#1e40af",fontSize:15}}>😴 {inactiveCount} cliente{inactiveCount>1?"s":""} {inactiveCount>1?"inativos":"inativo"}</div><div style={{fontSize:13,color:"#1e3a8a",marginTop:2}}>Sem compras há mais de {settings.inactive_days||30} dias</div></div>
-                  <Btn sm variant="blue" onClick={()=>setShowCampaign(true)}>Chamar de volta →</Btn>
+                  <div><div style={{fontWeight:700,color:C.blueD,fontSize:15}}>😴 {inactiveCount} cliente{inactiveCount>1?"s":""} inativo{inactiveCount>1?"s":""}</div><div style={{fontSize:13,color:"#1e3a8a",marginTop:2}}>Sem compras há mais de {settings.inactive_days||30} dias</div></div>
+                  <Btn sm variant="blue" onClick={()=>setShowCampaign(true)}>Chamar →</Btn>
                 </div>
               )}
 
-              <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:16,padding:"18px 22px",marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                <div><div style={{color:C.r100,fontSize:11,marginBottom:2}}>Ação rápida</div><div style={{color:C.white,fontSize:17,fontWeight:700}}>Registrar pontos + enviar WhatsApp</div><div style={{color:C.r200,fontSize:12,marginTop:2}}>Selecione o cliente na aba Clientes → Pontuar</div></div>
-                <Btn variant="dark" onClick={()=>setTab("clients")} style={{background:"rgba(255,255,255,0.15)",color:C.white,border:"1px solid rgba(255,255,255,0.2)",flexShrink:0}}>👥 Clientes →</Btn>
-              </div>
-
+              {/* Últimas transações */}
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`}}>
-                <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.g900,fontSize:14}}>📋 Últimas transações</div>
-                {txs.length===0&&<div style={{padding:28,textAlign:"center",color:C.g400,fontSize:14}}>Nenhuma transação ainda</div>}
-                {txs.slice(0,6).map(t=>(
+                <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.g900,fontSize:14}}>📋 Transações do período ({filteredTxs.length})</div>
+                {filteredTxs.length===0&&<div style={{padding:28,textAlign:"center",color:C.g400,fontSize:14}}>Nenhuma transação neste período</div>}
+                {filteredTxs.slice(0,10).map(t=>(
                   <div key={t.id} style={{padding:"11px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div style={{display:"flex",gap:10,alignItems:"center"}}>
                       <div style={{width:32,height:32,borderRadius:8,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{t.type==="earn"?"⬆️":"🎁"}</div>
-                      <div><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"—"}</div><div style={{fontSize:11,color:C.g600}}>{t.note||"—"} · {fmtDate(t.created_at)}</div></div>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"—"}</div>
+                        <div style={{fontSize:11,color:C.g600}}>{t.note||"—"}</div>
+                        <div style={{fontSize:10,color:C.g400}}>{fmtDateTime(t.created_at)}{t.amount_paid?` · ${fmtMoney(t.amount_paid)}`:""}</div>
+                      </div>
                     </div>
                     <span style={{fontWeight:700,fontSize:14,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":""}{t.points} pts</span>
                   </div>
@@ -910,13 +1115,33 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ── CLIENTES ── */}
+          {/* ══ CLIENTES & CAMPANHAS ══ */}
           {tab==="clients"&&(
             <div>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:10,flexWrap:"wrap"}}>
-                <input value={searchQ} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Buscar nome ou telefone…" style={{padding:"9px 14px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",flex:1,minWidth:180}}/>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {selected.size>0&&<Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_custom)}>📤 Enviar msg ({selected.size})</Btn>}
+              {/* Cards de campanha rápida */}
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>📢 Campanhas rápidas</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+                  {[
+                    {icon:"🎂",title:"Aniversariantes",desc:`${clients.filter(c=>isBirthday(c.dob)).length} hoje`,color:C.goldL},
+                    {icon:"😴",title:"Inativos",desc:`${inactiveCount} clientes`,color:C.blueL},
+                    {icon:"⭐",title:"Clientes VIP",desc:`${vipCount} especiais`,color:C.r50},
+                    {icon:"👥",title:"Todos",desc:`${clients.length} clientes`,color:C.greenL},
+                  ].map(card=>(
+                    <div key={card.title} onClick={()=>setShowCampaign(true)} style={{background:card.color,borderRadius:12,padding:14,cursor:"pointer",border:`1px solid ${C.g200}`,display:"flex",gap:12,alignItems:"center"}}>
+                      <span style={{fontSize:24}}>{card.icon}</span>
+                      <div><div style={{fontWeight:700,fontSize:13,color:C.g900}}>{card.title}</div><div style={{fontSize:12,color:C.g600}}>{card.desc}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tabela de clientes */}
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.g700,textTransform:"uppercase",letterSpacing:0.5}}>👥 Clientes</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flex:1,justifyContent:"flex-end"}}>
+                  <input value={searchQ} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nome ou telefone..." style={{padding:"8px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:13,outline:"none",minWidth:200}}/>
+                  {selected.size>0&&<Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_custom||DEFAULT_SETTINGS.msg_custom)}>📤 Enviar ({selected.size})</Btn>}
                   <Btn sm variant="secondary" onClick={()=>setShowCampaign(true)}>📢 Campanha</Btn>
                   <Btn sm onClick={()=>setModal("addClient")}>➕ Novo cliente</Btn>
                 </div>
@@ -925,7 +1150,7 @@ function AdminPanel({user,store,onSignOut}) {
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"auto"}}>
                 {filtered.length===0
                   ?<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhum cliente encontrado</div>
-                  :<table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                  :<table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
                     <thead>
                       <tr style={{background:C.g50}}>
                         <th style={{padding:"10px 12px",width:36}}>
@@ -952,31 +1177,42 @@ function AdminPanel({user,store,onSignOut}) {
                             </td>
                             <td style={{padding:"11px 12px"}}>
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                <div style={{width:30,height:30,borderRadius:"50%",background:C.r50,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.r500,fontSize:12,flexShrink:0}}>{c.name[0]}</div>
+                                <div style={{width:30,height:30,borderRadius:"50%",background:C.r50,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.r500,fontSize:12,flexShrink:0}}>{(c.name||"?")[0]}</div>
                                 <div>
                                   <div style={{fontWeight:600,fontSize:13,color:C.g900,display:"flex",gap:5,alignItems:"center"}}>
                                     {c.name}
-                                    {isBday&&<span title="Aniversariante hoje!">🎂</span>}
+                                    {isBday&&<span title="Aniversariante!">🎂</span>}
                                     {isInactive&&<span title="Inativo">😴</span>}
                                     {isIncomplete&&<span title="Cadastro incompleto">⚠️</span>}
+                                    {c.notes&&<span title={c.notes} style={{cursor:"help"}}>📝</span>}
                                   </div>
                                   <div style={{fontSize:11,color:C.g600}}>{c.email||"sem e-mail"}{c.dob?` · ${fmtDate(c.dob)}`:""}</div>
                                 </div>
                               </div>
                             </td>
                             <td style={{padding:"11px 12px",fontSize:13}}>
-                              <a href={waLink(c.phone,"Olá!")} target="_blank" style={{color:C.green,fontWeight:500}}>📱 {c.phone}</a>
+                              <a href={waLink(c.phone,"Olá!")} target="_blank" style={{color:C.green,fontWeight:500}}>📱 {fmtPhone(c.phone)}</a>
                             </td>
                             <td style={{padding:"11px 12px",fontWeight:700,color:C.r500,fontSize:14}}>{fmtPts(c.points)}</td>
                             <td style={{padding:"11px 12px"}}><LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/></td>
-                            <td style={{padding:"11px 12px",fontSize:12,color:C.g700}}>{c.total_visits}x</td>
+                            <td style={{padding:"11px 12px",fontSize:12,color:C.g700}}>{c.total_visits||0}x</td>
                             <td style={{padding:"11px 12px",fontSize:12,color:isInactive?C.red:C.g700}}>{fmtDate(c.last_visit)}</td>
                             <td style={{padding:"11px 12px"}}>
-                              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                                <Btn sm variant="secondary" onClick={()=>{setSel(c);setModal("addPoints");}}>⭐</Btn>
-                                <Btn sm variant="green" onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points)).replace(/\{pontos\}/g,"").replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name).replace(/\{link\}/g,magicLink(c.magic_token||"")).replace(/\{loja\}/g,store.name)),"_blank")} title="Enviar link mágico">🔗</Btn>
-                                {isBday&&<Btn sm variant="gold" onClick={()=>sendBirthday(c)} title="Enviar parabéns">🎂</Btn>}
-                                {isIncomplete&&<Btn sm variant="blue" onClick={()=>sendIncomplete(c)} title="Pedir cadastro completo">⚠️</Btn>}
+                              <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                                {/* Botão Pontuar — DESTAQUE */}
+                                <button onClick={()=>{setSel(c);setModal("addPoints");}}
+                                  style={{padding:"7px 14px",borderRadius:9,border:"none",background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:5,boxShadow:`0 2px 8px ${C.r400}44`,whiteSpace:"nowrap"}}>
+                                  ⭐ Pontuar
+                                </button>
+                                {/* Botões secundários */}
+                                <button onClick={()=>{setSel(c);setEF({name:c.name||"",phone:fmtPhone(c.phone||""),email:c.email||"",dob:c.dob||"",notes:c.notes||""});setModal("editClient");}}
+                                  title="Editar cadastro"
+                                  style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.white,color:C.g600,cursor:"pointer",fontSize:13}}>✏️</button>
+                                <button onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points)).replace(/\{pontos\}/g,"").replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name).replace(/\{link\}/g,magicLink(c.magic_token||"")).replace(/\{loja\}/g,store.name)),"_blank")}
+                                  title="Enviar link mágico"
+                                  style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.white,color:C.green,cursor:"pointer",fontSize:13}}>🔗</button>
+                                {isBday&&<button onClick={()=>sendBirthday(c)} title="Enviar parabéns" style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.goldL}`,background:C.goldL,color:C.gold2,cursor:"pointer",fontSize:13}}>🎂</button>}
+                                {isIncomplete&&<button onClick={()=>sendIncomplete(c)} title="Pedir cadastro completo" style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.blueL}`,background:C.blueL,color:C.blueD,cursor:"pointer",fontSize:13}}>⚠️</button>}
                               </div>
                             </td>
                           </tr>
@@ -989,40 +1225,15 @@ function AdminPanel({user,store,onSignOut}) {
               {selected.size>0&&(
                 <div style={{marginTop:10,padding:"10px 14px",background:C.r50,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                   <span style={{fontSize:13,color:C.r600,fontWeight:600}}>{selected.size} selecionado{selected.size>1?"s":""}</span>
-                  <Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_points||DEFAULT_SETTINGS.msg_points)}>📤 Enviar notif. pontos</Btn>
-                  <Btn sm variant="secondary" onClick={()=>sendToSelected(settings.msg_custom)}>📤 Enviar msg personalizada</Btn>
-                  <Btn sm variant="ghost" onClick={()=>setSelected(new Set())}>Limpar seleção</Btn>
+                  <Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_points||DEFAULT_SETTINGS.msg_points)}>📤 Notif. pontos</Btn>
+                  <Btn sm variant="secondary" onClick={()=>sendToSelected(settings.msg_custom||DEFAULT_SETTINGS.msg_custom)}>📤 Msg personalizada</Btn>
+                  <Btn sm variant="ghost" onClick={()=>setSelected(new Set())}>Limpar</Btn>
                 </div>
               )}
             </div>
           )}
 
-          {/* ── CAMPANHAS ── */}
-          {tab==="campaign"&&(
-            <div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14,marginBottom:24}}>
-                {[
-                  {icon:"🎂",title:"Aniversariantes",desc:`${clients.filter(c=>isBirthday(c.dob)).length} clientes hoje`,color:C.goldL,action:()=>{setShowCampaign(true);}},
-                  {icon:"😴",title:"Inativos",desc:`${inactiveCount} sem comprar há ${settings.inactive_days||30}+ dias`,color:C.blueL,action:()=>setShowCampaign(true)},
-                  {icon:"⭐",title:"Clientes VIP",desc:`${vipCount} clientes especiais`,color:C.r50,action:()=>setShowCampaign(true)},
-                  {icon:"👥",title:"Todos os clientes",desc:`${clients.length} no total`,color:C.greenL,action:()=>setShowCampaign(true)},
-                ].map(card=>(
-                  <div key={card.title} onClick={card.action} style={{background:card.color,borderRadius:14,padding:18,cursor:"pointer",border:`1px solid ${C.g200}`}}>
-                    <div style={{fontSize:28,marginBottom:8}}>{card.icon}</div>
-                    <div style={{fontWeight:700,fontSize:15,color:C.g900,marginBottom:4}}>{card.title}</div>
-                    <div style={{fontSize:13,color:C.g600,marginBottom:12}}>{card.desc}</div>
-                    <Btn sm variant="primary">Enviar mensagem →</Btn>
-                  </div>
-                ))}
-              </div>
-              <div style={{background:C.white,borderRadius:14,padding:20,border:`1px solid ${C.g100}`}}>
-                <h3 style={{margin:"0 0 4px",color:C.g900}}>💡 Como funciona</h3>
-                <p style={{fontSize:14,color:C.g600,lineHeight:1.7}}>Clique em qualquer campanha acima para abrir o painel de envio. Você pode filtrar o público, editar a mensagem e enviar com um clique para todos os clientes selecionados via WhatsApp. As mensagens automáticas (aniversário, cadastro incompleto, etc.) são configuradas na aba Configurações.</p>
-              </div>
-            </div>
-          )}
-
-          {/* ── RANKING ── */}
+          {/* ══ RANKING ══ */}
           {tab==="ranking"&&(
             <div>
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"hidden"}}>
@@ -1039,7 +1250,7 @@ function AdminPanel({user,store,onSignOut}) {
                           <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
                           {isBirthday(c.dob)&&<span>🎂</span>}
                         </div>
-                        <div style={{fontSize:11,color:C.g600}}>{c.total_visits} visitas · Últ: {fmtDate(c.last_visit)}</div>
+                        <div style={{fontSize:11,color:C.g600}}>{c.total_visits||0} visitas · Últ: {fmtDate(c.last_visit)}</div>
                       </div>
                       <div style={{fontWeight:700,fontSize:16,color:C.r500}}>{fmtPts(c.points)} pts</div>
                     </div>
@@ -1049,31 +1260,7 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ── HISTÓRICO ── */}
-          {tab==="history"&&(
-            <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"hidden"}}>
-              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontWeight:700,color:C.g900}}>Todas as transações</span>
-                <span style={{fontSize:12,color:C.g600}}>{txs.length} registros</span>
-              </div>
-              {txs.length===0&&<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhuma transação ainda</div>}
-              {txs.map(t=>(
-                <div key={t.id} style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <div style={{width:34,height:34,borderRadius:9,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{t.type==="earn"?"⬆️":"🎁"}</div>
-                    <div>
-                      <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.clients?.name||"Cliente"}</div>
-                      <div style={{fontSize:11,color:C.g600}}>{t.note||"—"}</div>
-                      <div style={{fontSize:10,color:C.g400}}>{fmtDate(t.created_at)}{t.amount_paid?` · R$${Number(t.amount_paid).toFixed(2)}`:""}</div>
-                    </div>
-                  </div>
-                  <span style={{fontWeight:700,fontSize:14,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":""}{t.points} pts</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── RECOMPENSAS ── */}
+          {/* ══ RECOMPENSAS ══ */}
           {tab==="rewards"&&(
             <div>
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
@@ -1083,18 +1270,18 @@ function AdminPanel({user,store,onSignOut}) {
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
                 {rewards.map(r=>(
                   <div key={r.id} style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:16,opacity:r.active?1:0.55}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                      <div style={{display:"flex",justifyContent:"space-between",width:"100%",alignItems:"flex-start"}}>
-                    <span style={{fontSize:24}}>{r.type==="product"?"🍇":"💸"}</span>
-                    {r.tag&&<span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:r.tag==="hot"?"#fee2e2":r.tag==="best"?C.greenL:C.blueL,color:r.tag==="hot"?"#ef4444":r.tag==="best"?C.greenD:C.blueD}}>{r.tag==="hot"?"🔥 Popular":r.tag==="best"?"💰 Melhor custo":r.tag==="new"?"✨ Novo":r.tag}</span>}
-                    </div>
-                      <span style={{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:r.active?C.greenL:C.g100,color:r.active?"#065f46":C.g600}}>{r.active?"Ativo":"Inativo"}</span>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontSize:24}}>{r.type==="product"?"🍇":"💸"}</span>
+                        {r.tag&&<span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:r.tag==="hot"?C.redL:r.tag==="best"?C.greenL:C.blueL,color:r.tag==="hot"?C.red:r.tag==="best"?C.greenD:C.blueD}}>{r.tag==="hot"?"🔥 Popular":r.tag==="best"?"💰 Melhor custo":"✨ Novo"}</span>}
+                      </div>
+                      <span style={{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:r.active?C.greenL:C.g100,color:r.active?C.greenD:C.g600}}>{r.active?"Ativo":"Inativo"}</span>
                     </div>
                     <div style={{fontWeight:700,fontSize:14,color:C.g900,marginBottom:2}}>{r.name}</div>
                     {r.description&&<div style={{fontSize:12,color:C.g600,marginBottom:6}}>{r.description}</div>}
                     <div style={{color:C.r500,fontWeight:700,fontSize:16,marginBottom:10}}>{fmtPts(r.points_cost)} pts</div>
                     <div style={{display:"flex",gap:6}}>
-                      <Btn sm variant={r.active?"danger":"green"} full onClick={()=>{api.toggleReward(r.id,!r.active);setRewards(p=>p.map(rr=>rr.id===r.id?{...rr,active:!rr.active}:rr));}} style={{justifyContent:"center"}}>
+                      <Btn sm variant={r.active?"danger":"green"} full onClick={()=>{api.toggleReward(r.id,!r.active);setRewards(p=>p.map(rr=>rr.id===r.id?{...rr,active:!rr.active}:rr));}}>
                         {r.active?"Desativar":"Ativar"}
                       </Btn>
                       <Btn sm variant="ghost" onClick={()=>{api.deleteReward(r.id);setRewards(p=>p.filter(rr=>rr.id!==r.id));}}>🗑</Btn>
@@ -1105,69 +1292,179 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ── CONFIGURAÇÕES ── */}
+          {/* ══ CONFIGURAÇÕES ══ */}
           {tab==="settings"&&(
-            <div style={{maxWidth:640}}>
-              {/* Pontuação */}
-              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
-                <h3 style={{margin:"0 0 14px",color:C.g900,fontSize:15}}>⭐ Regras de pontuação</h3>
-                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                  <div style={{flex:1,minWidth:130}}><Input label="Pontos por R$1,00" type="number" value={settings.points_per_real||3} onChange={e=>setSettings({...settings,points_per_real:Number(e.target.value)})}/></div>
-                  <div style={{flex:1,minWidth:130}}><Input label="Compra mínima (R$)" type="number" value={settings.min_purchase||10} onChange={e=>setSettings({...settings,min_purchase:Number(e.target.value)})}/></div>
-                  <div style={{flex:1,minWidth:130}}><Input label="Bônus cadastro completo (pts)" type="number" value={settings.bonus_complete_points||50} onChange={e=>setSettings({...settings,bonus_complete_points:Number(e.target.value)})}/></div>
-                  <div style={{flex:1,minWidth:130}}><Input label="Dias p/ considerar inativo" type="number" value={settings.inactive_days||30} onChange={e=>setSettings({...settings,inactive_days:Number(e.target.value)})}/></div>
-                </div>
-                <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:13,color:C.r500}}>
-                  💡 Compra de R$30 = <strong>{Math.floor(30*(settings.points_per_real||3))} pontos</strong>
-                </div>
-              </div>
+            <div style={{maxWidth:680}}>
 
-              {/* Níveis VIP */}
-              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                  <h3 style={{margin:0,color:C.g900,fontSize:15}}>🏆 Níveis e benefícios</h3>
-                  <Select value={settings.ranking_period_months||3} onChange={e=>setSettings({...settings,ranking_period_months:Number(e.target.value)})} style={{width:"auto",marginBottom:0}}>
-                    <option value={1}>Período: 1 mês</option>
-                    <option value={3}>Período: 3 meses</option>
-                    <option value={6}>Período: 6 meses</option>
+              {/* ── Dados da empresa ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:`linear-gradient(135deg,${C.r800},${C.r700})`,display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>🏪</span>
+                  <div><div style={{fontWeight:700,fontSize:15,color:C.white}}>Dados da Empresa</div><div style={{fontSize:12,color:C.r200}}>Informações da sua loja</div></div>
+                </div>
+                <div style={{padding:20}}>
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:200}}><Input label="Nome da loja *" value={settings.store_name||store.name||""} onChange={e=>setSettings({...settings,store_name:e.target.value})} placeholder="Açaíteria da Ana"/></div>
+                    <div style={{flex:1,minWidth:200}}><Input label="WhatsApp" value={settings.store_phone||store.phone||""} onChange={e=>setSettings({...settings,store_phone:e.target.value})} placeholder="11999887766"/></div>
+                  </div>
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:200}}><Input label="E-mail da loja" type="email" value={settings.store_email||""} onChange={e=>setSettings({...settings,store_email:e.target.value})} placeholder="contato@loja.com"/></div>
+                    <div style={{flex:1,minWidth:200}}><Input label="Nome do responsável" value={settings.store_owner||""} onChange={e=>setSettings({...settings,store_owner:e.target.value})} placeholder="Ana Silva"/></div>
+                  </div>
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:200}}><Input label="Data de fundação" type="date" value={settings.store_founded||""} onChange={e=>setSettings({...settings,store_founded:e.target.value})}/></div>
+                    <div style={{flex:1,minWidth:200}}><Input label="Cidade / Bairro" value={settings.store_address||""} onChange={e=>setSettings({...settings,store_address:e.target.value})} placeholder="São Paulo — Pinheiros"/></div>
+                  </div>
+                  <Select label="Segmento" value={settings.store_segment||""} onChange={e=>setSettings({...settings,store_segment:e.target.value})}>
+                    <option value="">Selecione o segmento</option>
+                    <option value="acaiteria">Açaíteria</option>
+                    <option value="sorveteria">Sorveteria</option>
+                    <option value="lanchonete">Lanchonete</option>
+                    <option value="cafeteria">Cafeteria</option>
+                    <option value="restaurante">Restaurante</option>
+                    <option value="outro">Outro</option>
                   </Select>
                 </div>
-                {Object.entries(settings.levels||DEFAULT_SETTINGS.levels).map(([key,l])=>(
-                  <div key={key} style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${C.g200}`,marginBottom:8}}>
-                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
-                      <span style={{fontWeight:700,fontSize:14}}>{getLevelBadge(key,settings.levels).icon} {l.name}</span>
-                      <Input label="" type="number" value={l.min} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,min:Number(e.target.value)}}})} style={{width:90,marginBottom:0}} placeholder="Pts mín"/>
-                      <span style={{fontSize:12,color:C.g600}}>até</span>
-                      <Input label="" type="number" value={l.max>=999999?"":l.max} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,max:e.target.value?Number(e.target.value):999999}}})} style={{width:90,marginBottom:0}} placeholder="Pts máx"/>
+              </div>
+
+              {/* ── Regras de pontuação ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#fef3c7,#fde68a)",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>⭐</span>
+                  <div><div style={{fontWeight:700,fontSize:15,color:"#92400e"}}>Regras de Pontuação</div><div style={{fontSize:12,color:"#b45309"}}>Como os clientes ganham pontos</div></div>
+                </div>
+                <div style={{padding:20}}>
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:130}}><Input label="Pontos por R$1,00" type="number" value={settings.points_per_real||3} onChange={e=>setSettings({...settings,points_per_real:Number(e.target.value)})}/></div>
+                    <div style={{flex:1,minWidth:130}}><Input label="Compra mínima (R$)" type="number" value={settings.min_purchase||10} onChange={e=>setSettings({...settings,min_purchase:Number(e.target.value)})}/></div>
+                    <div style={{flex:1,minWidth:130}}><Input label="Bônus cadastro completo (pts)" type="number" value={settings.bonus_complete_points||50} onChange={e=>setSettings({...settings,bonus_complete_points:Number(e.target.value)})}/></div>
+                    <div style={{flex:1,minWidth:130}}><Input label="Dias para considerar inativo" type="number" value={settings.inactive_days||30} onChange={e=>setSettings({...settings,inactive_days:Number(e.target.value)})}/></div>
+                  </div>
+                  <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:13,color:C.r500}}>
+                    💡 Compra de R$30 = <strong>{Math.floor(30*(settings.points_per_real||3))} pontos</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Validade dos pontos ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#dbeafe,#bfdbfe)",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>⏳</span>
+                  <div><div style={{fontWeight:700,fontSize:15,color:C.blueD}}>Validade dos Pontos</div><div style={{fontSize:12,color:"#1e40af"}}>Controle quando os pontos expiram</div></div>
+                </div>
+                <div style={{padding:20}}>
+                  <Select label="Modalidade" value={settings.expire_mode||"never"} onChange={e=>setSettings({...settings,expire_mode:e.target.value})}>
+                    <option value="never">♾️ Vitalícia — pontos nunca expiram</option>
+                    <option value="days">📅 Expiram após X dias sem compra</option>
+                  </Select>
+                  {(settings.expire_mode||"never")==="days"&&(
+                    <div>
+                      <Input label="Dias para expirar (após última compra)" type="number" value={settings.expire_days||365} onChange={e=>setSettings({...settings,expire_days:Number(e.target.value)})} placeholder="365"/>
+                      <div style={{padding:"10px 12px",background:"#fff7ed",borderRadius:9,fontSize:13,color:"#c2410c"}}>
+                        ⚠️ Clientes sem compra há mais de {settings.expire_days||365} dias perderão os pontos acumulados.
+                      </div>
                     </div>
-                    <Input label="Benefícios" value={l.benefits} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,benefits:e.target.value}}})} placeholder="Ex: 10% de desconto"/>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
 
-              {/* Brinde aniversário */}
-              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
-                <h3 style={{margin:"0 0 14px",color:C.g900,fontSize:15}}>🎂 Brinde de aniversário</h3>
-                <Input label="O que o cliente ganha no aniversário" value={settings.birthday_gift||""} onChange={e=>setSettings({...settings,birthday_gift:e.target.value})} placeholder="Ex: Açaí 300ml grátis"/>
+              {/* ── Níveis VIP ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:`linear-gradient(135deg,${C.goldL},#fde68a)`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:20}}>🏆</span>
+                    <div><div style={{fontWeight:700,fontSize:15,color:"#92400e"}}>Níveis VIP e Ranking</div><div style={{fontSize:12,color:"#b45309"}}>Configure os níveis e benefícios</div></div>
+                  </div>
+                  <Select value={settings.ranking_period_months||3} onChange={e=>setSettings({...settings,ranking_period_months:Number(e.target.value)})} style={{width:"auto",marginBottom:0,fontSize:12}}>
+                    <option value={1}>Ranking: 1 mês</option>
+                    <option value={3}>Ranking: 3 meses</option>
+                    <option value={6}>Ranking: 6 meses</option>
+                  </Select>
+                </div>
+                <div style={{padding:20}}>
+                  {Object.entries(settings.levels||DEFAULT_SETTINGS.levels).map(([key,l])=>(
+                    <div key={key} style={{padding:"12px 14px",borderRadius:10,border:`1px solid ${C.g200}`,marginBottom:8}}>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+                        <span style={{fontWeight:700,fontSize:14}}>{getLevelBadge(key,settings.levels).icon} {l.name}</span>
+                        <Input label="" type="number" value={l.min} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,min:Number(e.target.value)}}})} style={{width:90,marginBottom:0}} placeholder="Pts mín"/>
+                        <span style={{fontSize:12,color:C.g600}}>até</span>
+                        <Input label="" type="number" value={l.max>=999999?"":l.max} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,max:e.target.value?Number(e.target.value):999999}}})} style={{width:90,marginBottom:0}} placeholder="Pts máx"/>
+                      </div>
+                      <Input label="Benefícios" value={l.benefits} onChange={e=>setSettings({...settings,levels:{...settings.levels,[key]:{...l,benefits:e.target.value}}})} placeholder="Ex: 10% de desconto"/>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Mensagens automáticas */}
-              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:20,marginBottom:14}}>
-                <h3 style={{margin:"0 0 4px",color:C.g900,fontSize:15}}>📱 Mensagens automáticas</h3>
-                <div style={{fontSize:12,color:C.g400,marginBottom:14}}>Variáveis: {"{nome} {saldo} {pontos} {nivel} {link} {loja} {dias} {brinde} {posicao} {falta}"}</div>
-                {[
-                  {key:"msg_points",   label:"✅ Após pontuar (enviada automaticamente)"},
-                  {key:"msg_birthday", label:"🎂 Aniversário do cliente"},
-                  {key:"msg_inactive", label:"😴 Chamar clientes inativos"},
-                  {key:"msg_complete", label:"⚠️ Pedir cadastro completo (+50pts)"},
-                  {key:"msg_ranking",  label:"🏆 Posição no ranking"},
-                  {key:"msg_custom",   label:"✏️ Mensagem personalizada (campanha)"},
-                ].map(({key,label})=>(
-                  <div key={key} style={{marginBottom:14}}>
-                    <Textarea label={label} value={settings[key]||""} onChange={e=>setSettings({...settings,[key]:e.target.value})} rows={3}/>
-                {settings[key]&&<WAPreview msg={(settings[key]||"").replace(/\{nome\}/g,"João").replace(/\{saldo\}/g,"320").replace(/\{pontos\}/g,"25").replace(/\{nivel\}/g,"VIP Bronze").replace(/\{link\}/g,APP_URL).replace(/\{loja\}/g,store.name).replace(/\{dias\}/g,"42").replace(/\{brinde\}/g,settings.birthday_gift||"brinde").replace(/\{posicao\}/g,"3").replace(/\{falta\}/g,"180").replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))} storeName={store.name}/>}
+              {/* ── Brinde de aniversário ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#fce7f3,#fbcfe8)",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>🎂</span>
+                  <div><div style={{fontWeight:700,fontSize:15,color:"#9d174d"}}>Brinde de Aniversário</div><div style={{fontSize:12,color:"#be185d"}}>O que o cliente ganha no aniversário</div></div>
+                </div>
+                <div style={{padding:20}}>
+                  <Input label="Presente de aniversário" value={settings.birthday_gift||""} onChange={e=>setSettings({...settings,birthday_gift:e.target.value})} placeholder="Ex: Açaí 300ml grátis 🍇"/>
+                </div>
+              </div>
+
+              {/* ── Produtos / Cardápio ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#d1fae5,#a7f3d0)",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>📦</span>
+                  <div><div style={{fontWeight:700,fontSize:15,color:C.greenD}}>Produtos / Cardápio</div><div style={{fontSize:12,color:C.green}}>Produtos para seleção ao registrar vendas</div></div>
+                </div>
+                <div style={{padding:20}}>
+                  {(settings.products||[]).map((p,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                      <input value={p.name} onChange={e=>{const ps=[...(settings.products||[])];ps[i]={...ps[i],name:e.target.value};setSettings({...settings,products:ps});}} placeholder="Nome do produto" style={{flex:2,padding:"7px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:13}}/>
+                      <input value={p.price||""} type="number" onChange={e=>{const ps=[...(settings.products||[])];ps[i]={...ps[i],price:parseFloat(e.target.value)||0};setSettings({...settings,products:ps});}} placeholder="R$" style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:13}}/>
+                      <button onClick={()=>{const ps=(settings.products||[]).filter((_,ii)=>ii!==i);setSettings({...settings,products:ps});}} style={{padding:"6px 10px",borderRadius:8,background:C.redL,border:"none",color:C.red,cursor:"pointer",fontSize:14}}>🗑</button>
+                    </div>
+                  ))}
+                  <button onClick={()=>setSettings({...settings,products:[...(settings.products||[]),{name:"",price:0}]})}
+                    style={{padding:"8px 16px",borderRadius:9,border:`1.5px dashed ${C.r300}`,background:C.r50,color:C.r500,cursor:"pointer",fontSize:13,fontWeight:600,width:"100%"}}>
+                    + Adicionar produto
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Mensagens automáticas ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
+                <div style={{padding:"14px 20px",background:`linear-gradient(135deg,${C.r50},${C.r100})`,display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:20}}>📱</span>
+                  <div><div style={{fontWeight:700,fontSize:15,color:C.r600}}>Mensagens Automáticas</div><div style={{fontSize:12,color:C.r400}}>Templates usados nas campanhas e envios automáticos</div></div>
+                </div>
+                <div style={{padding:20}}>
+                  <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:12,color:C.r500,marginBottom:16,lineHeight:1.7}}>
+                    <strong>Variáveis disponíveis:</strong> {"{nome}"} {"{saldo}"} {"{pontos}"} {"{nivel}"} {"{link}"} {"{loja}"} {"{dias}"} {"{brinde}"} {"{posicao}"} {"{falta}"} {"{bonus}"}
                   </div>
-                ))}
+                  {[
+                    {key:"msg_points",   label:"✅ Após pontuar (automática ao registrar venda)",   default:DEFAULT_SETTINGS.msg_points},
+                    {key:"msg_birthday", label:"🎂 Feliz aniversário",                               default:DEFAULT_SETTINGS.msg_birthday},
+                    {key:"msg_inactive", label:"😴 Chamar clientes inativos",                        default:DEFAULT_SETTINGS.msg_inactive},
+                    {key:"msg_complete", label:"⚠️ Completar cadastro (ganhar {bonus} pts)",         default:DEFAULT_SETTINGS.msg_complete},
+                    {key:"msg_ranking",  label:"🏆 Posição no ranking",                              default:DEFAULT_SETTINGS.msg_ranking},
+                    {key:"msg_custom",   label:"✏️ Mensagem personalizada (campanha livre)",         default:DEFAULT_SETTINGS.msg_custom},
+                  ].map(({key,label,default:def})=>(
+                    <div key={key} style={{marginBottom:18,paddingBottom:18,borderBottom:`1px solid ${C.g100}`}}>
+                      <Textarea label={label} value={settings[key]!=null?settings[key]:def} onChange={e=>setSettings({...settings,[key]:e.target.value})} rows={4}/>
+                      <WAPreview
+                        msg={(settings[key]!=null?settings[key]:def)
+                          .replace(/\{nome\}/g,"João")
+                          .replace(/\{saldo\}/g,"320")
+                          .replace(/\{pontos\}/g,"25")
+                          .replace(/\{nivel\}/g,"VIP Bronze")
+                          .replace(/\{link\}/g,APP_URL)
+                          .replace(/\{loja\}/g,store.name)
+                          .replace(/\{dias\}/g,"42")
+                          .replace(/\{brinde\}/g,settings.birthday_gift||"brinde")
+                          .replace(/\{posicao\}/g,"3")
+                          .replace(/\{falta\}/g,"180")
+                          .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))}
+                        storeName={store.name}/>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <Btn loading={savingSett} onClick={handleSaveSettings}>💾 Salvar todas as configurações</Btn>
@@ -1178,15 +1475,16 @@ function AdminPanel({user,store,onSignOut}) {
         </div>
       </div>
 
-      {/* ── MODAIS ── */}
+      {/* ══ MODAIS ══ */}
       {modal==="addClient"&&(
         <Modal title="➕ Novo cliente" onClose={()=>setModal(null)}>
           <Input label="Nome completo *" value={clientForm.name} onChange={e=>setCF({...clientForm,name:e.target.value})} placeholder="Ana Beatriz Santos"/>
           <Input label="Telefone (WhatsApp) *" type="tel" value={clientForm.phone} onChange={e=>setCF({...clientForm,phone:e.target.value})} placeholder="11999887766"/>
-          <Input label="Data de nascimento" type="date" value={clientForm.dob} onChange={e=>setCF({...clientForm,dob:e.target.value})} hint="Usada para enviar parabéns automaticamente 🎂"/>
+          <Input label="Data de nascimento" type="date" value={clientForm.dob} onChange={e=>setCF({...clientForm,dob:e.target.value})} hint="Para enviar parabéns automaticamente 🎂"/>
           <Input label="E-mail (opcional)" type="email" value={clientForm.email} onChange={e=>setCF({...clientForm,email:e.target.value})} placeholder="ana@email.com"/>
-          <div style={{padding:"10px 12px",background:C.blueL,borderRadius:9,fontSize:13,color:"#1e40af",marginBottom:13}}>
-            💡 Se o cadastro estiver incompleto, o cliente receberá uma mensagem WhatsApp convidando a completar e ganhará {settings.bonus_complete_points||50} pontos de bônus!
+          <Textarea label="Preferências & observações" value={clientForm.notes} onChange={e=>setCF({...clientForm,notes:e.target.value})} rows={2} placeholder="Ex: intolerância à lactose, prefere sem Nutella, tem 2 filhos..."/>
+          <div style={{padding:"10px 12px",background:C.blueL,borderRadius:9,fontSize:13,color:C.blueD,marginBottom:13}}>
+            💡 Cadastro incompleto? O cliente receberá um WhatsApp e ganhará {settings.bonus_complete_points||50} pts ao completar!
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
@@ -1195,8 +1493,27 @@ function AdminPanel({user,store,onSignOut}) {
         </Modal>
       )}
 
+      {modal==="editClient"&&selClient&&(
+        <Modal title={`✏️ Editar — ${selClient.name}`} onClose={()=>{setModal(null);setSel(null);}}>
+          <Input label="Nome completo" value={editForm.name} onChange={e=>setEF({...editForm,name:e.target.value})} placeholder={selClient.name}/>
+          <Input label="Telefone (WhatsApp)" type="tel" value={editForm.phone} onChange={e=>setEF({...editForm,phone:e.target.value})} placeholder={fmtPhone(selClient.phone||"")}/>
+          <Input label="Data de nascimento" type="date" value={editForm.dob} onChange={e=>setEF({...editForm,dob:e.target.value})}/>
+          <Input label="E-mail" type="email" value={editForm.email} onChange={e=>setEF({...editForm,email:e.target.value})} placeholder="email@exemplo.com"/>
+          <Textarea label="Preferências & observações" value={editForm.notes} onChange={e=>setEF({...editForm,notes:e.target.value})} rows={2} placeholder="Ex: intolerância à lactose, tem filhos, prefere sem granola..."/>
+          {(!selClient.email||!selClient.dob)&&!selClient.profile_completed&&(
+            <div style={{padding:"10px 12px",background:C.greenL,borderRadius:9,fontSize:13,color:C.greenD,marginBottom:13}}>
+              🎁 Se completar e-mail e data de nascimento, o cliente ganhará automaticamente {settings.bonus_complete_points||50} pontos!
+            </div>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="ghost" full onClick={()=>{setModal(null);setSel(null);}}>Cancelar</Btn>
+            <Btn full onClick={handleEditClient}>Salvar alterações</Btn>
+          </div>
+        </Modal>
+      )}
+
       {modal==="addPoints"&&selClient&&(
-        <Modal title={`⭐ Pontuar — ${selClient.name}`} onClose={()=>setModal(null)}>
+        <Modal title={`⭐ Pontuar — ${selClient.name}`} onClose={()=>{setModal(null);setSel(null);}}>
           <div style={{padding:"10px 13px",background:C.r50,borderRadius:9,marginBottom:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
               <div style={{fontSize:11,color:C.r600}}>Saldo atual</div>
@@ -1206,9 +1523,25 @@ function AdminPanel({user,store,onSignOut}) {
           </div>
           <Input label="Valor da compra (R$) *" type="number" value={pointsForm.value} onChange={e=>setPF({...pointsForm,value:e.target.value})} placeholder="Ex: 35.90"/>
           {parseFloat(pointsForm.value)>0&&(
-            <div style={{marginTop:-9,marginBottom:11,padding:"8px 11px",background:C.greenL,borderRadius:8,fontSize:13,color:"#065f46"}}>
+            <div style={{marginTop:-9,marginBottom:11,padding:"8px 11px",background:C.greenL,borderRadius:8,fontSize:13,color:C.greenD}}>
               Serão adicionados: <strong>{Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))} pontos</strong>
-              <div style={{fontSize:11,marginTop:2}}>📱 WhatsApp será aberto automaticamente após confirmar</div>
+              <div style={{fontSize:11,marginTop:2}}>📱 WhatsApp será aberto automaticamente</div>
+            </div>
+          )}
+          {/* Seleção de produtos do cardápio */}
+          {(settings.products||[]).length>0&&(
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:6}}>Produtos (opcional)</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {(settings.products||[]).filter(p=>p.name).map((p,i)=>(
+                  <button key={i} onClick={()=>{
+                    const cur=pointsForm.note;
+                    const newNote=cur?cur+(cur.endsWith(" ")?"":" ")+p.name:p.name;
+                    setPF({...pointsForm,note:newNote,value:p.price&&!pointsForm.value?String(p.price):pointsForm.value});
+                  }} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${C.g200}`,background:C.white,color:C.g700,fontSize:12,cursor:"pointer",fontWeight:500}}>
+                    {p.name}{p.price?` · R$${p.price}`:""}</button>
+                ))}
+              </div>
             </div>
           )}
           <Input label="Descrição" value={pointsForm.note} onChange={e=>setPF({...pointsForm,note:e.target.value})} placeholder="Ex: Açaí 500ml + granola"/>
@@ -1223,8 +1556,8 @@ function AdminPanel({user,store,onSignOut}) {
                 .replace(/\{loja\}/g,store.name)}
               storeName={store.name}/>
           )}
-          <div style={{display:"flex",gap:10}}>
-            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <Btn variant="ghost" full onClick={()=>{setModal(null);setSel(null);}}>Cancelar</Btn>
             <Btn full onClick={handleAddPoints}>Confirmar + WhatsApp 📱</Btn>
           </div>
         </Modal>
@@ -1261,7 +1594,6 @@ function AdminPanel({user,store,onSignOut}) {
 
       {showCampaign&&<CampaignModal clients={clients} store={store} onClose={()=>setShowCampaign(false)} showToast={showToast}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
-      {celebration&&<PointsCelebration {...celebration} settings={settings} onClose={()=>setCelebration(null)}/>}
     </div>
   );
 }
@@ -1278,6 +1610,8 @@ function ClientPortal({token}) {
   const [tab,setTab]=useState("home");
   const [completeForm,setCompleteForm]=useState({email:"",dob:""});
   const [completing,setCompleting]=useState(false);
+  const [showCelebration,setShowCelebration]=useState(false);
+  const [celebData,setCelebData]=useState(null);
 
   useEffect(()=>{
     (async()=>{
@@ -1290,6 +1624,17 @@ function ClientPortal({token}) {
       setTxs(t.data||[]);
       setAllClients(all.data||[]);
       setLoading(false);
+      // Verificar se há pontos recentes (últimos 5 min) → celebrar
+      const lastTx=(t.data||[]).find(tx=>tx.type==="earn");
+      if(lastTx){
+        const minsAgo=(Date.now()-new Date(lastTx.created_at).getTime())/60000;
+        if(minsAgo<5){
+          const settings=c.stores?.settings||DEFAULT_SETTINGS;
+          const newLevel=getLevel(c.points,settings.levels||DEFAULT_SETTINGS.levels);
+          setCelebData({pts:lastTx.points,newPts:c.points,clientName:c.name,newLevel,prevLevel:newLevel,settings});
+          setShowCelebration(true);
+        }
+      }
     })();
   },[token]);
 
@@ -1306,14 +1651,26 @@ function ClientPortal({token}) {
 
   const handleComplete=async()=>{
     if(!completeForm.email&&!completeForm.dob){setMsg({type:"error",text:"Preencha pelo menos um campo"});return;}
+    if(client.profile_completed){setMsg({type:"error",text:"Cadastro já foi completado anteriormente."});return;}
+    const wasComplete=!!client.email&&!!client.dob;
+    if(wasComplete){setMsg({type:"error",text:"Cadastro já está completo!"});return;}
     setCompleting(true);
-    const {data:updated}=await api.updateClient(client.id,{...completeForm});
-    const sid=client.store_id||client.stores?.id;
-    const bonusPts=(client.stores?.settings?.bonus_complete_points)||50;
-    await api.addBonusPoints(sid,client.id,bonusPts,"Bônus cadastro completo");
-    setClient(prev=>({...prev,...completeForm,points:prev.points+bonusPts}));
-    setCompleting(false);
-    setMsg({type:"success",text:`🎉 Cadastro completo! Você ganhou ${bonusPts} pontos de bônus!`});
+    await api.updateClient(client.id,{...completeForm});
+    const nowEmail=completeForm.email||client.email;
+    const nowDob=completeForm.dob||client.dob;
+    if(nowEmail&&nowDob){
+      const sid=client.store_id||client.stores?.id;
+      const bonusPts=(client.stores?.settings?.bonus_complete_points)||50;
+      await api.addBonusPoints(sid,client.id,bonusPts,"Bônus cadastro completo");
+      await api.updateClient(client.id,{profile_completed:true});
+      setClient(prev=>({...prev,...completeForm,points:prev.points+bonusPts,profile_completed:true}));
+      setCompleting(false);
+      setMsg({type:"success",text:`🎉 Cadastro completo! Você ganhou ${bonusPts} pontos de bônus!`});
+    } else {
+      setClient(prev=>({...prev,...completeForm}));
+      setCompleting(false);
+      setMsg({type:"success",text:"✅ Dados atualizados!"});
+    }
     setTimeout(()=>setMsg(null),5000);
   };
 
@@ -1334,19 +1691,27 @@ function ClientPortal({token}) {
   const nextLevel=nextLevelKey?levels[nextLevelKey]:null;
   const pctToNext=nextLevel?Math.min(100,Math.round(((client.points-myInfo.min)/(nextLevel.min-myInfo.min))*100)):100;
   const storeName=client.stores?.name||"RoxoClub";
-  const isIncomplete=!client.email||!client.dob;
+  const isIncomplete=(!client.email||!client.dob)&&!client.profile_completed;
   const bonusPts=settings.bonus_complete_points||50;
 
-  const clientTabs=[{id:"home",icon:"🏠",label:"Início"},{id:"rewards",icon:"🎁",label:"Resgatar"},{id:"ranking",icon:"🏆",label:"Ranking"},{id:"history",icon:"📋",label:"Histórico"}];
+  const clientTabs=[
+    {id:"home",   icon:"🏠",label:"Início"},
+    {id:"rewards",icon:"🎁",label:"Resgatar"},
+    {id:"ranking",icon:"🏆",label:"Ranking"},
+    {id:"history",icon:"📋",label:"Histórico"},
+  ];
 
   return (
     <div style={{minHeight:"100vh",background:C.r900,fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:480,margin:"0 auto"}}>
+      {showCelebration&&celebData&&(
+        <PointsCelebration {...celebData} onClose={()=>setShowCelebration(false)}/>
+      )}
       {/* Header */}
       <div style={{background:`linear-gradient(160deg,${C.r800},${C.r900})`,padding:"24px 20px 0"}}>
         <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><Logo size={28}/></div>
         <div style={{background:"rgba(255,255,255,0.05)",borderRadius:20,padding:20,border:"1px solid rgba(255,255,255,0.08)"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
-            <div style={{width:48,height:48,borderRadius:"50%",background:`linear-gradient(135deg,${C.r400},${C.r200})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:20,color:C.white,flexShrink:0}}>{client.name[0]}</div>
+            <div style={{width:48,height:48,borderRadius:"50%",background:`linear-gradient(135deg,${C.r400},${C.r200})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:20,color:C.white,flexShrink:0}}>{(client.name||"?")[0]}</div>
             <div>
               <div style={{color:C.r200,fontSize:11,marginBottom:1}}>Olá 👋 — {storeName}</div>
               <div style={{color:C.white,fontWeight:700,fontSize:18,fontFamily:"Georgia,serif"}}>{client.name.split(" ")[0]}</div>
@@ -1370,7 +1735,7 @@ function ClientPortal({token}) {
               <div style={{fontSize:11,color:C.r300,marginTop:4}}>Faltam {fmtPts(nextLevel.min-client.points)} pts</div>
             </div>
           ):(
-            <div style={{textAlign:"center",padding:"7px 12px",background:"rgba(245,158,11,0.15)",borderRadius:9,color:C.gold,fontSize:13,fontWeight:600}}>🏆 Nível máximo atingido! Você é incrível!</div>
+            <div style={{textAlign:"center",padding:"7px 12px",background:"rgba(245,158,11,0.15)",borderRadius:9,color:C.gold,fontSize:13,fontWeight:600}}>🏆 Nível máximo! Você é incrível!</div>
           )}
         </div>
       </div>
@@ -1378,7 +1743,7 @@ function ClientPortal({token}) {
       {/* Nav tabs */}
       <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
         {clientTabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0",background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${C.r300}`:"2px solid transparent",color:tab===t.id?C.r200:"rgba(255,255,255,0.3)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0",background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${C.r300}`:"2px solid transparent",color:tab===t.id?C.r200:"rgba(255,255,255,0.35)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
             <span style={{fontSize:18}}>{t.icon}</span>
             <span style={{fontSize:10,fontWeight:tab===t.id?700:400}}>{t.label}</span>
           </button>
@@ -1387,13 +1752,13 @@ function ClientPortal({token}) {
 
       {/* Body */}
       <div style={{background:C.r50,minHeight:"60vh",padding:"20px 16px"}}>
-        {msg&&<div style={{padding:"12px 15px",borderRadius:11,marginBottom:14,background:msg.type==="success"?"#d1fae5":"#fee2e2",color:msg.type==="success"?"#065f46":C.red,fontWeight:500,fontSize:14,animation:"fadeUp 0.3s ease"}}>{msg.text}</div>}
+        {msg&&<div style={{padding:"12px 15px",borderRadius:11,marginBottom:14,background:msg.type==="success"?"#d1fae5":"#fee2e2",color:msg.type==="success"?C.greenD:C.red,fontWeight:500,fontSize:14,animation:"fadeUp 0.3s ease"}}>{msg.text}</div>}
 
-        {/* Cadastro incompleto */}
+        {/* Completar cadastro */}
         {isIncomplete&&tab==="home"&&(
           <div style={{background:"#fffbeb",borderRadius:14,padding:16,marginBottom:16,border:"1px solid #fcd34d"}}>
             <div style={{fontWeight:700,color:"#92400e",marginBottom:4}}>⚠️ Complete seu cadastro e ganhe {bonusPts} pontos!</div>
-            <div style={{fontSize:13,color:"#78350f",marginBottom:12}}>Adicione seu e-mail e data de nascimento para receber benefícios exclusivos no seu aniversário!</div>
+            <div style={{fontSize:13,color:"#78350f",marginBottom:12}}>Adicione e-mail e data de nascimento para benefícios exclusivos no seu aniversário!</div>
             {!client.email&&<Input label="E-mail" type="email" value={completeForm.email} onChange={e=>setCompleteForm({...completeForm,email:e.target.value})} placeholder="seu@email.com"/>}
             {!client.dob&&<Input label="Data de nascimento" type="date" value={completeForm.dob} onChange={e=>setCompleteForm({...completeForm,dob:e.target.value})}/>}
             <Btn sm loading={completing} onClick={handleComplete}>Completar e ganhar {bonusPts} pts 🎁</Btn>
@@ -1417,12 +1782,15 @@ function ClientPortal({token}) {
                 </div>
               );
             })}
-            {rewards.length>3&&<div onClick={()=>setTab("rewards")} style={{textAlign:"center",fontSize:13,color:C.r500,cursor:"pointer",padding:8,fontWeight:600}}>Ver todas as recompensas →</div>}
+            {rewards.length>3&&<div onClick={()=>setTab("rewards")} style={{textAlign:"center",fontSize:13,color:C.r500,cursor:"pointer",padding:8,fontWeight:600}}>Ver todas →</div>}
 
             <div style={{fontWeight:700,color:C.g900,marginBottom:8,marginTop:18,fontSize:15}}>📋 Últimas atividades</div>
-            {txs.slice(0,4).map(t=>(
+            {txs.slice(0,5).map(t=>(
               <div key={t.id} style={{background:C.white,borderRadius:11,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,border:`1px solid ${C.g100}`}}>
-                <div><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div><div style={{fontSize:11,color:C.g400}}>{fmtDate(t.created_at)}</div></div>
+                <div>
+                  <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div>
+                  <div style={{fontSize:11,color:C.g400}}>{fmtDateTime(t.created_at)}</div>
+                </div>
                 <span style={{fontWeight:700,color:t.type==="earn"?C.green:C.red,fontSize:13}}>{t.type==="earn"?"+":""}{t.points} pts</span>
               </div>
             ))}
@@ -1441,7 +1809,11 @@ function ClientPortal({token}) {
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                     <div style={{display:"flex",gap:10,alignItems:"center"}}>
                       <span style={{fontSize:26}}>{r.type==="product"?"🍇":"💸"}</span>
-                      <div><div style={{fontWeight:700,fontSize:14,color:C.g900}}>{r.name}</div>{r.description&&<div style={{fontSize:12,color:C.g600}}>{r.description}</div>}</div>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:14,color:C.g900}}>{r.name}</div>
+                        {r.description&&<div style={{fontSize:12,color:C.g600}}>{r.description}</div>}
+                        {r.tag&&<span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:r.tag==="hot"?C.redL:r.tag==="best"?C.greenL:C.blueL,color:r.tag==="hot"?C.red:r.tag==="best"?C.greenD:C.blueD}}>{r.tag==="hot"?"🔥 Popular":r.tag==="best"?"💰 Melhor custo":"✨ Novo"}</span>}
+                      </div>
                     </div>
                     <button onClick={()=>handleRedeem(r)} style={{padding:"7px 14px",borderRadius:9,border:"none",background:can?C.r400:C.g200,color:can?C.white:C.g600,fontWeight:600,fontSize:13,cursor:can?"pointer":"not-allowed",flexShrink:0}}>
                       {can?"Resgatar":"Insuf."}
@@ -1471,7 +1843,10 @@ function ClientPortal({token}) {
               <div key={t.id} style={{background:C.white,borderRadius:11,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,border:`1px solid ${C.g100}`}}>
                 <div style={{display:"flex",gap:9,alignItems:"center"}}>
                   <div style={{width:30,height:30,borderRadius:7,background:t.type==="earn"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{t.type==="earn"?"⬆️":"🎁"}</div>
-                  <div><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div><div style={{fontSize:11,color:C.g400}}>{fmtDate(t.created_at)}</div></div>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{t.note||"Atividade"}</div>
+                    <div style={{fontSize:11,color:C.g400}}>{fmtDateTime(t.created_at)}</div>
+                  </div>
                 </div>
                 <span style={{fontWeight:700,color:t.type==="earn"?C.green:C.red,fontSize:13}}>{t.type==="earn"?"+":""}{t.points} pts</span>
               </div>
@@ -1479,13 +1854,13 @@ function ClientPortal({token}) {
           </div>
         )}
 
-        <div style={{marginTop:20,textAlign:"center",fontSize:11,color:C.g400}}>Powered by 💜 RoxoClub</div>
+        <div style={{marginTop:20,textAlign:"center",fontSize:11,color:C.g400}}>💜 <strong>RoxoClub</strong> — <em>Fidelidade</em></div>
       </div>
     </div>
   );
 }
 
-// ══ ROOT ═══════════════════════════════════════════════════════════════════════
+// ══ ROOT ═════════════════════════════════════════════════════════════════════
 function App() {
   const [session,setSession]=useState(undefined);
   const [store,setStore]=useState(null);
