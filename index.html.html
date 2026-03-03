@@ -15,7 +15,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0820;-webkit-font-smoothing:antialiased}
@@ -66,16 +66,15 @@ a{color:#a855f7;text-decoration:none}
 <body>
 <div id="root"></div>
 <script type="text/babel">
+
 const {useState,useEffect,useCallback,useMemo,useRef} = React;
 const {createClient} = supabase;
 
-// ══ CONFIG ══════════════════════════════════════════════════════════════════
 const SUPABASE_URL      = "https://pwluhfvexuwrlrfihgoe.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3bHVoZnZleHV3cmxyZmloZ29lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNjQ1OTgsImV4cCI6MjA4NzY0MDU5OH0.pdDn8sezZWMWblvrqlqF1T00yDzKDIqpmDUZ1yAeZek";
 const APP_URL           = "https://roxo-club.vercel.app";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ══ CORES ════════════════════════════════════════════════════════════════════
 const C = {
   r900:"#0f0820",r800:"#1e0d38",r700:"#2d1155",r600:"#4a1a7a",
   r500:"#6b21a8",r400:"#7c3aed",r300:"#a855f7",r200:"#c084fc",r100:"#e9d5ff",r50:"#f5f0ff",
@@ -88,7 +87,6 @@ const C = {
   g400:"#9ca3af",g600:"#4b5563",g700:"#374151",g900:"#111827",
 };
 
-// ══ HELPERS ══════════════════════════════════════════════════════════════════
 const fmtDate = (iso) => {
   if(!iso) return "—";
   const s=iso.split("T")[0].split("-");
@@ -125,7 +123,6 @@ const fmtPhone = (v) => {
 };
 const rawPhone = (v) => (v||"").replace(/\D/g,"");
 
-// ── Máscaras de entrada ──────────────────────────────────────
 const fmtDobMask = (v) => {
   const d=(v||"").replace(/\D/g,"");
   if(d.length<=2) return d;
@@ -149,7 +146,6 @@ const waLink = (phone,msg) => {
 };
 const magicLink = (token) => `${APP_URL}/?token=${token}`;
 
-// Calcula horário mais frequente do cliente baseado nas transações
 const getPreferredHour = (txList) => {
   if(!txList||!txList.length) return null;
   const hours={};
@@ -185,14 +181,11 @@ const DEFAULT_SETTINGS = {
   store_address:"",
 };
 
-// ══ HELPER NOME DA LOJA ══════════════════════════════════════════════════════
-// Sempre pega settings.store_name primeiro, cai para store.name como fallback
 const getStoreName = (store, settings) => {
   const n = settings?.store_name || store?.name || "RoxoClub";
   return n.charAt(0).toUpperCase() + n.slice(1);
 };
 
-// ══ API ══════════════════════════════════════════════════════════════════════
 const api = {
   signIn:  (e,p) => sb.auth.signInWithPassword({email:e,password:p}),
   signUp:  (e,p) => sb.auth.signUp({email:e,password:p}),
@@ -254,7 +247,6 @@ const api = {
   deleteReward:(id)   => sb.from("rewards").delete().eq("id",id),
 };
 
-// ══ LEVEL SYSTEM ═════════════════════════════════════════════════════════════
 function getLevel(pts, levels) {
   const lvls = Object.entries(levels||DEFAULT_SETTINGS.levels).sort((a,b)=>b[1].min-a[1].min);
   for(const [key,l] of lvls) { if(pts>=l.min) return key; }
@@ -269,7 +261,6 @@ function getLevelBadge(levelKey, levels) {
   return {icon:icons[levelKey]||"👤", ...l};
 }
 
-// ══ UI PRIMITIVES ═════════════════════════════════════════════════════════════
 function SkeletonLine({w="100%",h=14,mb=8}) {
   return <div className="skeleton" style={{width:w,height:h,marginBottom:mb,display:"block"}}/>;
 }
@@ -405,7 +396,6 @@ function LevelBadge({levelKey,levels}) {
   return <span style={{padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:bg,color:fg,whiteSpace:"nowrap"}}>{b.icon} {b.name}</span>;
 }
 
-// ══ CONFETTI + CELEBRAÇÃO (para o cliente) ════════════════════════════════════
 function Confetti({active}) {
   if(!active) return null;
   const pieces=Array.from({length:22},(_,i)=>({
@@ -472,7 +462,6 @@ function PointsCelebration({pts,newPts,clientName,newLevel,prevLevel,settings,on
   );
 }
 
-// ══ AUTH ══════════════════════════════════════════════════════════════════════
 function AuthScreen({onAuth}) {
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState(""); const [pwd,setPwd]=useState("");
@@ -504,7 +493,6 @@ function AuthScreen({onAuth}) {
   );
 }
 
-// ══ ONBOARDING ════════════════════════════════════════════════════════════════
 function OnboardingScreen({user,onDone}) {
   const [name,setName]=useState(""); const [phone,setPhone]=useState("");
   const [loading,setLoad]=useState(false); const [err,setErr]=useState("");
@@ -533,7 +521,6 @@ function OnboardingScreen({user,onDone}) {
   );
 }
 
-// ══ CAMPANHA MODAL ═══════════════════════════════════════════════════════════
 function CampaignModal({clients,store,onClose,showToast}) {
   const settings = store.settings||DEFAULT_SETTINGS;
   const [searchQ,setSearchQ]=useState("");
@@ -571,7 +558,6 @@ function CampaignModal({clients,store,onClose,showToast}) {
     if(filter==="age")         list=list.filter(c=>{const a=age(c.dob);return a!==null&&a>=(ageMin||0)&&a<=(ageMax||999);});
     if(filter==="birthmonth"&&birthMonthFilter!=="") list=list.filter(c=>birthMonth(c.dob)===Number(birthMonthFilter));
     if(filter==="hour"&&hourFilter!=="") list=list.filter(c=>{
-      // approximate: check last_visit hour
       return hourOfDay(c.last_visit)===Number(hourFilter);
     });
     return list;
@@ -634,7 +620,7 @@ function CampaignModal({clients,store,onClose,showToast}) {
   return (
     <Modal title="📢 Campanha — Enviar mensagens" onClose={onClose} wide>
       <div className="campaign-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-        {/* Esquerda: público */}
+        
         <div>
           <div style={{fontSize:12,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>1. Selecionar público</div>
           <Select value={filter} onChange={e=>{setFilter(e.target.value);setBirthMonthFilter("");setHourFilter("");}}>
@@ -663,17 +649,17 @@ function CampaignModal({clients,store,onClose,showToast}) {
             </Select>
           )}
 
-          {/* Busca dentro da lista */}
+          
           <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 Buscar por nome ou telefone..." style={{width:"100%",padding:"7px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:13,marginBottom:8,outline:"none"}}/>
 
-          {/* Ações de seleção */}
+          
           <div style={{display:"flex",gap:6,marginBottom:6}}>
             <button onClick={selectAll} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`1px solid ${C.r300}`,background:C.r50,color:C.r500,cursor:"pointer",fontWeight:600}}>Selecionar todos</button>
             <button onClick={clearAll} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.white,color:C.g600,cursor:"pointer"}}>Limpar</button>
             <span style={{fontSize:11,color:C.g600,alignSelf:"center",marginLeft:"auto"}}><strong style={{color:C.r500}}>{selectedIds.size}</strong> selecionados</span>
           </div>
 
-          {/* Lista de clientes — NÃO SOME ao desmarcar */}
+          
           <div style={{maxHeight:220,overflow:"auto",border:`1px solid ${C.g200}`,borderRadius:9}}>
             {searchFiltered.map(c=>{
               const sel=selectedIds.has(c.id);
@@ -694,7 +680,7 @@ function CampaignModal({clients,store,onClose,showToast}) {
           </div>
         </div>
 
-        {/* Direita: mensagem */}
+        
         <div>
           <div style={{fontSize:12,fontWeight:700,color:C.g700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>2. Escolher mensagem</div>
           <Select value={msgType} onChange={e=>{setMsgType(e.target.value);setMsg(msgTemplates[e.target.value]||"");}}>
@@ -726,7 +712,6 @@ function CampaignModal({clients,store,onClose,showToast}) {
   );
 }
 
-// ══ RANKING PANEL (cliente) ════════════════════════════════════════════════════
 function RankingPanel({client,allClients,settings}) {
   const levels=settings?.levels||DEFAULT_SETTINGS.levels;
   const sorted=[...allClients].sort((a,b)=>b.points-a.points);
@@ -786,7 +771,6 @@ function RankingPanel({client,allClients,settings}) {
   );
 }
 
-// ══ ADMIN PANEL ══════════════════════════════════════════════════════════════
 function AdminPanel({user,store,onSignOut}) {
   const [tab,setTab]=useState("dashboard");
   const [clients,setClients]=useState([]);
@@ -807,11 +791,9 @@ function AdminPanel({user,store,onSignOut}) {
   const [showCampaign,setShowCampaign]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(false);
   const isMobile=typeof window!=='undefined'&&window.innerWidth<=768;
-  // Filtro de datas na Central de Vendas
   const [dateFilter,setDateFilter]=useState("month");
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
-  // Ação rápida de pontuar na Central de Vendas
   const [quickSearch,setQuickSearch]=useState("");
   const [quickClient,setQuickClient]=useState(null);
   const [quickValue,setQuickValue]=useState("");
@@ -835,7 +817,6 @@ function AdminPanel({user,store,onSignOut}) {
     if(birthdays.length>0) showToast(`🎂 ${birthdays.length} aniversariante(s) hoje!`,"warn");
   },[clients]);
 
-  // ── Filtro de datas ──
   const filteredTxs = useMemo(()=>{
     const now=new Date();
     let from=null, to=null;
@@ -866,16 +847,13 @@ function AdminPanel({user,store,onSignOut}) {
       c.name.toLowerCase().includes(searchQ.toLowerCase())||
       (c.phone||"").includes(searchQ)
     );
-    // Filtro faixa de pontos
     if(ptsFaixaFilter){
       const [min,max]=ptsFaixaFilter;
       list=list.filter(c=>(c.points||0)>=min&&(max===null||(c.points||0)<=max));
     }
-    // Filtro última visita
     if(visitFilter){
       list=list.filter(c=>daysDiff(c.last_visit)>=visitFilter);
     }
-    // Ordenação
     if(sortCol){
       list=[...list].sort((a,b)=>{
         let va,vb;
@@ -908,7 +886,6 @@ function AdminPanel({user,store,onSignOut}) {
     ).slice(0,10);
   },[clients,quickSearch]);
 
-  // ── Handlers ──
   const handleAddClient=async(goToPoints=false)=>{
     if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
     const {data,error}=await api.createClient(store.id,{
@@ -931,7 +908,6 @@ function AdminPanel({user,store,onSignOut}) {
     }
     setCF({name:"",phone:"",email:"",dob:"",dobMask:"",notes:""});
     showToast("✅ Cliente cadastrado!");
-    // Se veio do fluxo "Registrar pontos" → abre pontuar direto
     if(goToPoints||fromPoints){
       setFromPoints(false);
       setModal(null);
@@ -954,7 +930,6 @@ function AdminPanel({user,store,onSignOut}) {
       notes:editForm.notes!=null?editForm.notes:(selClient.notes||null),
     });
     if(error){showToast(error.message,"error");return;}
-    // Bônus de cadastro completo pelo lojista
     if(wasIncomplete&&nowComplete&&!selClient.profile_completed){
       const bonusPts=settings.bonus_complete_points||50;
       await api.addBonusPoints(store.id,selClient.id,bonusPts,"Bônus cadastro completo (loja)");
@@ -984,7 +959,6 @@ function AdminPanel({user,store,onSignOut}) {
       .replace(/\{loja\}/g,getStoreName(store,settings));
     await load();
     setModal(null);setPF({value:"",note:""});setSel(null);
-    // Confirmação simples pro lojista (sem celebração — celebração é pro cliente)
     showToast(`✅ ${fmtPts(pts)} pontos adicionados para ${selClient.name.split(" ")[0]}!`);
     setTimeout(()=>window.open(waLink(selClient.phone,waMsg),"_blank"),400);
   };
@@ -1069,7 +1043,6 @@ function AdminPanel({user,store,onSignOut}) {
     showToast(`📤 Enviando para ${sel.length} clientes...`);
   };
 
-  // ── Menu ──
   const tabs=[
     {id:"dashboard", icon:"🏠", label:"Central de Vendas"},
     {id:"clients",   icon:"👥", label:"Clientes & Campanhas"},
@@ -1080,10 +1053,10 @@ function AdminPanel({user,store,onSignOut}) {
 
   return (
     <div className="admin-layout">
-      {/* Overlay mobile */}
+      
       {sidebarOpen&&<div className="mobile-overlay" onClick={()=>setSidebarOpen(false)}/>}
 
-      {/* Sidebar */}
+      
       <div className={`admin-sidebar${sidebarOpen?" open":""}`}>
         <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <Logo size={28}/>
@@ -1104,9 +1077,9 @@ function AdminPanel({user,store,onSignOut}) {
         </div>
       </div>
 
-      {/* Main */}
+      
       <div className="admin-main">
-        {/* Header */}
+        
         <div style={{background:C.white,borderBottom:`1px solid ${C.g100}`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <button onClick={()=>setSidebarOpen(true)} className="mobile-nav" style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.g700,padding:"4px 6px",display:"none"}}>☰</button>
@@ -1122,15 +1095,15 @@ function AdminPanel({user,store,onSignOut}) {
         <div className="admin-content" style={{paddingBottom:80}}>
           {loading?<Spinner/>:<>
 
-          {/* ══ CENTRAL DE VENDAS ══ */}
+          
           {tab==="dashboard"&&(
             <div>
-              {/* ── Registrar Pontos — Central de Vendas ── */}
+              
               <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:18,padding:20,marginBottom:16}}>
                 <div style={{color:C.white,fontWeight:700,fontSize:17,marginBottom:2}}>⭐ Registrar pontos</div>
                 <div style={{color:C.r200,fontSize:12,marginBottom:14}}>Clique no campo e selecione o cliente</div>
 
-                {/* Campo de busca com lista automática */}
+                
                 <div style={{position:"relative",marginBottom:10}}>
                   <input
                     value={quickSearch}
@@ -1140,7 +1113,7 @@ function AdminPanel({user,store,onSignOut}) {
                     placeholder="🔍 Nome ou telefone do cliente..."
                     style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"none",fontSize:14,outline:"none"}}/>
 
-                  {/* Lista dropdown — aparece ao focar OU ao digitar */}
+                  
                   {(showQuickList||quickSearch.length>=1)&&!quickClient&&(
                     <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:200,maxHeight:280,overflow:"auto",marginTop:4}}>
                       {quickSearch.length<1&&<div style={{padding:"8px 14px",fontSize:11,color:C.g400,fontWeight:600,borderBottom:`1px solid ${C.g100}`}}>⏱ Últimos clientes atendidos</div>}
@@ -1167,10 +1140,10 @@ function AdminPanel({user,store,onSignOut}) {
                   )}
                 </div>
 
-                {/* Cliente selecionado — campo de valor + pontuar */}
+                
                 {quickClient&&(
                   <div style={{background:"rgba(255,255,255,0.12)",borderRadius:12,padding:14,marginTop:4}}>
-                    {/* Info do cliente */}
+                    
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                       <div style={{color:C.white}}>
                         <div style={{fontWeight:700,fontSize:15}}>{quickClient.name.split(" ")[0]}</div>
@@ -1181,13 +1154,13 @@ function AdminPanel({user,store,onSignOut}) {
                         <button onClick={()=>{setQuickClient(null);setQuickSearch("");}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:C.white,borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:12}}>✕</button>
                       </div>
                     </div>
-                    {/* Preferências se existir */}
+                    
                     {quickClient.notes&&(
                       <div style={{background:"rgba(255,255,255,0.15)",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:12,color:C.white}}>
                         📝 <strong>Preferências:</strong> {quickClient.notes}
                       </div>
                     )}
-                    {/* Valor + pontuar */}
+                    
                     <div style={{display:"flex",gap:10,alignItems:"center"}}>
                       <input value={quickValue} onChange={e=>setQuickValue(e.target.value)} type="number" placeholder="Valor da compra R$"
                         style={{flex:1,padding:"10px 14px",borderRadius:10,border:"none",fontSize:14,outline:"none"}}/>
@@ -1201,7 +1174,7 @@ function AdminPanel({user,store,onSignOut}) {
                         +{fmtPts(Math.floor(parseFloat(quickValue)*(settings.points_per_real||3)))} pontos → total: {fmtPts(quickClient.points+Math.floor(parseFloat(quickValue)*(settings.points_per_real||3)))} pts
                       </div>
                     )}
-                    {/* Recompensas disponíveis */}
+                    
                     {rewards.filter(r=>r.active!==false&&quickClient.points>=(r.points_cost||0)).length>0&&(
                       <div style={{marginTop:12,borderTop:"1px solid rgba(255,255,255,0.2)",paddingTop:10}}>
                         <div style={{fontSize:11,color:C.r200,fontWeight:600,marginBottom:6}}>🎁 RECOMPENSAS DISPONÍVEIS AGORA</div>
@@ -1218,7 +1191,7 @@ function AdminPanel({user,store,onSignOut}) {
                 )}
               </div>
 
-              {/* Checklist onboarding */}
+              
               {(()=>{
                 const cl=[{done:true,label:"Conta criada ✓"},{done:clients.length>0,label:"Cadastrar 1º cliente",tab:"clients"},{done:txs.length>0,label:"Registrar 1ª venda",tab:"dashboard"},{done:rewards.length>0,label:"Criar recompensa",tab:"rewards"}];
                 const done=cl.filter(c=>c.done).length;
@@ -1241,7 +1214,7 @@ function AdminPanel({user,store,onSignOut}) {
                 );
               })()}
 
-              {/* Alertas */}
+              
               {birthdayCount>0&&(
                 <div style={{background:"linear-gradient(135deg,#fef3c7,#fde68a)",borderRadius:14,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #fcd34d"}}>
                   <div><div style={{fontWeight:700,color:"#92400e",fontSize:15}}>🎂 {birthdayCount} aniversariante{birthdayCount>1?"s":""} hoje!</div><div style={{fontSize:13,color:"#78350f",marginTop:2}}>Envie uma mensagem especial!</div></div>
@@ -1255,7 +1228,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               )}
 
-              {/* Últimas transações */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`}}>
                 <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.g900,fontSize:14}}>📋 Transações do período ({filteredTxs.length})</div>
                 {filteredTxs.length===0&&<div style={{padding:28,textAlign:"center",color:C.g400,fontSize:14}}>Nenhuma transação neste período</div>}
@@ -1276,10 +1249,10 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ══ CLIENTES & CAMPANHAS ══ */}
+          
           {tab==="clients"&&(
             <div>
-              {/* Cards de campanha rápida */}
+              
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>📢 Campanhas rápidas</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
@@ -1297,7 +1270,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* Tabela de clientes */}
+              
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,gap:10,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:13,fontWeight:700,color:C.g700,textTransform:"uppercase",letterSpacing:0.5}}>👥 Clientes</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flex:1,justifyContent:"flex-end"}}>
@@ -1308,7 +1281,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Métricas + Filtro de período ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:"12px 16px",marginBottom:12}}>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
                   <span style={{fontSize:12,fontWeight:600,color:C.g600}}>📅 Período:</span>
@@ -1332,7 +1305,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Alertas & Notificações ── */}
+              
               {(()=>{
                 const alerts=[];
                 if(inactiveCount>0) alerts.push({icon:"😴",color:C.blue,bg:C.blueL,text:`${inactiveCount} cliente${inactiveCount>1?"s":""} inativo${inactiveCount>1?"s":""} há +${settings.inactive_days||30} dias`,btn:"Fazer campanha",action:()=>setShowCampaign(true)});
@@ -1357,19 +1330,27 @@ function AdminPanel({user,store,onSignOut}) {
                 );
               })()}
 
-              {/* ── Filtros avançados + busca ── */}
+              
               <div style={{background:C.white,borderRadius:12,padding:"10px 14px",marginBottom:8,border:`1px solid ${C.g100}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 Buscar por nome ou telefone..."
                   style={{flex:1,minWidth:180,padding:"7px 12px",borderRadius:9,border:`1px solid ${C.g200}`,fontSize:13,outline:"none"}}/>
-                <select value={ptsFaixaFilter?JSON.stringify(ptsFaixaFilter):"all"}
-                  onChange={e=>{const v=e.target.value;setPtsFaixaFilter(v==="all"?null:JSON.parse(v));}}
+                <select value={ptsFaixaFilter||"all"}
+                  onChange={e=>{
+                    const v=e.target.value;
+                    if(v==="all") setPtsFaixaFilter(null);
+                    else if(v==="0-500") setPtsFaixaFilter([0,500]);
+                    else if(v==="500-1000") setPtsFaixaFilter([500,1000]);
+                    else if(v==="1000-5000") setPtsFaixaFilter([1000,5000]);
+                    else if(v==="5000-10000") setPtsFaixaFilter([5000,10000]);
+                    else if(v==="10000+") setPtsFaixaFilter([10000,null]);
+                  }}
                   style={{padding:"7px 10px",borderRadius:9,border:`1px solid ${C.g200}`,fontSize:12,color:C.g700,cursor:"pointer"}}>
                   <option value="all">⭐ Todos os pontos</option>
-                  <option value="[0,500]">0 – 500 pts</option>
-                  <option value="[500,1000]">500 – 1.000 pts</option>
-                  <option value="[1000,5000]">1.000 – 5.000 pts</option>
-                  <option value="[5000,10000]">5.000 – 10.000 pts</option>
-                  <option value="[10000,null]">+10.000 pts</option>
+                  <option value="0-500">0 – 500 pts</option>
+                  <option value="500-1000">500 – 1.000 pts</option>
+                  <option value="1000-5000">1.000 – 5.000 pts</option>
+                  <option value="5000-10000">5.000 – 10.000 pts</option>
+                  <option value="10000+">+10.000 pts</option>
                 </select>
                 <select value={visitFilter||"all"}
                   onChange={e=>{const v=e.target.value;setVisitFilter(v==="all"?null:parseInt(v));}}
@@ -1444,12 +1425,12 @@ function AdminPanel({user,store,onSignOut}) {
                             <td style={{padding:"11px 12px",fontSize:12,color:isInactive?C.red:C.g700}}>{fmtDate(c.last_visit)}</td>
                             <td style={{padding:"11px 12px"}}>
                               <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                                {/* Botão Pontuar — DESTAQUE */}
+                                
                                 <button onClick={()=>{setSel(c);setModal("addPoints");}}
                                   style={{padding:"7px 14px",borderRadius:9,border:"none",background:`linear-gradient(135deg,${C.r500},${C.r400})`,color:C.white,fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:5,boxShadow:`0 2px 8px ${C.r400}44`,whiteSpace:"nowrap"}}>
                                   ⭐ Pontuar
                                 </button>
-                                {/* Botões secundários */}
+                                
                                 <button onClick={()=>{setSel(c);setEF({name:c.name||"",phone:fmtPhone(c.phone||""),email:c.email||"",dob:c.dob||"",notes:c.notes||""});setModal("editClient");}}
                                   title="Editar cadastro"
                                   style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.white,color:C.g600,cursor:"pointer",fontSize:13}}>✏️</button>
@@ -1476,7 +1457,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               )}
 
-              {/* ── Transações do período ── */}
+              
               {filteredTxs.length>0&&(
                 <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginTop:16,overflow:"hidden"}}>
                   <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1517,7 +1498,7 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ══ RANKING ══ */}
+          
           {tab==="ranking"&&(
             <div>
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"hidden"}}>
@@ -1544,7 +1525,7 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ══ RECOMPENSAS ══ */}
+          
           {tab==="rewards"&&(
             <div>
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
@@ -1576,11 +1557,11 @@ function AdminPanel({user,store,onSignOut}) {
             </div>
           )}
 
-          {/* ══ CONFIGURAÇÕES ══ */}
+          
           {tab==="settings"&&(
             <div style={{maxWidth:680}}>
 
-              {/* ── Dados da empresa ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:`linear-gradient(135deg,${C.r800},${C.r700})`,display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:20}}>🏪</span>
@@ -1614,7 +1595,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Regras de pontuação ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#fef3c7,#fde68a)",display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:20}}>⭐</span>
@@ -1636,7 +1617,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Validade dos pontos ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#dbeafe,#bfdbfe)",display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:20}}>⏳</span>
@@ -1661,7 +1642,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Níveis VIP ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:`linear-gradient(135deg,${C.goldL},#fde68a)`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1689,7 +1670,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Brinde de aniversário ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#fce7f3,#fbcfe8)",display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:20}}>🎂</span>
@@ -1703,7 +1684,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Produtos / Cardápio ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:"linear-gradient(135deg,#d1fae5,#a7f3d0)",display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:20}}>📦</span>
@@ -1727,7 +1708,7 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
-              {/* ── Mensagens automáticas ── */}
+              
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginBottom:14,overflow:"hidden"}}>
                 <div style={{padding:"14px 20px",background:`linear-gradient(135deg,${C.r50},${C.r100})`,display:"flex",alignItems:"center",gap:10}}>
                   <span style={{fontSize:20}}>📱</span>
@@ -1777,7 +1758,7 @@ function AdminPanel({user,store,onSignOut}) {
         </div>
       </div>
 
-      {/* ══ MODAIS ══ */}
+      
       {modal==="addClient"&&(
         <Modal title="➕ Novo cliente" onClose={()=>setModal(null)}>
           <Input label="Nome completo *" value={clientForm.name} onChange={e=>setCF({...clientForm,name:e.target.value})} placeholder="Ana Beatriz Santos"/>
@@ -1814,7 +1795,7 @@ function AdminPanel({user,store,onSignOut}) {
         </Modal>
       )}
 
-      {/* Modal cadastro vindo de registrar pontos — após cadastrar abre pontuar */}
+      
       {modal==="addClientFromPoints"&&(
         <Modal title="➕ Novo cliente → Pontuar" onClose={()=>setModal(null)}>
           <div style={{padding:"8px 12px",background:C.blueL,borderRadius:9,fontSize:13,color:C.blueD,marginBottom:14}}>
@@ -1896,7 +1877,7 @@ function AdminPanel({user,store,onSignOut}) {
               <div style={{fontSize:11,marginTop:2}}>📱 WhatsApp será aberto automaticamente</div>
             </div>
           )}
-          {/* Seleção de produtos do cardápio */}
+          
           {(settings.products||[]).length>0&&(
             <div style={{marginBottom:12}}>
               <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:6}}>Produtos (opcional)</div>
@@ -1975,7 +1956,7 @@ function AdminPanel({user,store,onSignOut}) {
       {showCampaign&&<CampaignModal clients={clients} store={store} onClose={()=>setShowCampaign(false)} showToast={showToast}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
 
-      {/* Nav mobile bottom bar */}
+      
       <div className="mobile-nav" style={{display:"flex",position:"fixed",bottom:0,left:0,right:0,background:C.r900,borderTop:"1px solid rgba(255,255,255,0.1)",zIndex:400,padding:"4px 0"}}>
         {tabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
@@ -1990,7 +1971,6 @@ function AdminPanel({user,store,onSignOut}) {
   );
 }
 
-// ══ PORTAL DO CLIENTE ══════════════════════════════════════════════════════════
 function ClientPortal({token}) {
   const [client,setClient]=useState(null);
   const [allClients,setAllClients]=useState([]);
@@ -2016,7 +1996,6 @@ function ClientPortal({token}) {
       setTxs(t.data||[]);
       setAllClients(all.data||[]);
       setLoading(false);
-      // Celebração única por transação (usa localStorage para não repetir)
       const lastTx=(t.data||[]).find(tx=>tx.type==="earn");
       if(lastTx){
         const minsAgo=(Date.now()-new Date(lastTx.created_at).getTime())/60000;
@@ -2104,7 +2083,7 @@ function ClientPortal({token}) {
       {showCelebration&&celebData&&(
         <PointsCelebration {...celebData} onClose={()=>setShowCelebration(false)}/>
       )}
-      {/* Header */}
+      
       <div style={{background:`linear-gradient(160deg,${C.r800},${C.r900})`,padding:"24px 20px 0"}}>
         <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><Logo size={28}/></div>
         <div style={{background:"rgba(255,255,255,0.05)",borderRadius:20,padding:20,border:"1px solid rgba(255,255,255,0.08)"}}>
@@ -2138,7 +2117,7 @@ function ClientPortal({token}) {
         </div>
       </div>
 
-      {/* Nav tabs */}
+      
       <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
         {clientTabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0",background:"transparent",border:"none",borderBottom:tab===t.id?`2px solid ${C.r300}`:"2px solid transparent",color:tab===t.id?C.r200:"rgba(255,255,255,0.35)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
@@ -2148,11 +2127,11 @@ function ClientPortal({token}) {
         ))}
       </div>
 
-      {/* Body */}
+      
       <div style={{background:C.r50,minHeight:"60vh",padding:"20px 16px"}}>
         {msg&&<div style={{padding:"12px 15px",borderRadius:11,marginBottom:14,background:msg.type==="success"?"#d1fae5":"#fee2e2",color:msg.type==="success"?C.greenD:C.red,fontWeight:500,fontSize:14,animation:"fadeUp 0.3s ease"}}>{msg.text}</div>}
 
-        {/* Completar cadastro */}
+        
         {isIncomplete&&tab==="home"&&(
           <div style={{background:"#fffbeb",borderRadius:14,padding:16,marginBottom:16,border:"1px solid #fcd34d"}}>
             <div style={{fontWeight:700,color:"#92400e",marginBottom:4}}>⚠️ Complete seu cadastro e ganhe {bonusPts} pontos!</div>
@@ -2267,7 +2246,6 @@ function ClientPortal({token}) {
   );
 }
 
-// ══ ROOT ═════════════════════════════════════════════════════════════════════
 function App() {
   const [session,setSession]=useState(undefined);
   const [store,setStore]=useState(null);
@@ -2306,6 +2284,7 @@ function App() {
 }
 
 ReactDOM.render(<App/>,document.getElementById("root"));
+
 </script>
 </body>
 </html>
