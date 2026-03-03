@@ -89,7 +89,12 @@ const C = {
 };
 
 // ══ HELPERS ══════════════════════════════════════════════════════════════════
-const fmtDate    = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+const fmtDate = (iso) => {
+  if(!iso) return "—";
+  const s=iso.split("T")[0].split("-");
+  if(s.length<3) return "—";
+  return s[2]+"/"+s[1]+"/"+s[0];
+};
 const fmtDateTime= (iso) => iso ? new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
 const fmtPts     = (n)   => Number(n||0).toLocaleString("pt-BR");
 const fmtMoney   = (n)   => Number(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
@@ -98,8 +103,10 @@ const daysDiff   = (iso) => iso ? Math.floor((Date.now()-new Date(iso))/(8640000
 const hourOfDay  = (iso) => iso ? new Date(iso).getHours() : null;
 const isBirthday = (dob) => {
   if(!dob) return false;
-  const d=new Date(dob), now=new Date();
-  return d.getDate()===now.getDate() && d.getMonth()===now.getMonth();
+  const s=dob.split("T")[0].split("-");
+  if(s.length<3) return false;
+  const now=new Date();
+  return parseInt(s[2])===now.getDate() && parseInt(s[1])-1===now.getMonth();
 };
 const birthMonth = (dob) => dob ? new Date(dob).getMonth() : null;
 const age = (dob) => {
@@ -178,6 +185,13 @@ const DEFAULT_SETTINGS = {
   store_address:"",
 };
 
+// ══ HELPER NOME DA LOJA ══════════════════════════════════════════════════════
+// Sempre pega settings.store_name primeiro, cai para store.name como fallback
+const getStoreName = (store, settings) => {
+  const n = settings?.store_name || store?.name || "RoxoClub";
+  return n.charAt(0).toUpperCase() + n.slice(1);
+};
+
 // ══ API ══════════════════════════════════════════════════════════════════════
 const api = {
   signIn:  (e,p) => sb.auth.signInWithPassword({email:e,password:p}),
@@ -229,7 +243,12 @@ const api = {
   },
 
   listRewards: (sid) => sb.from("rewards").select("*").eq("store_id",sid).order("points_cost"),
-  createReward:(sid,d)=> sb.from("rewards").insert({store_id:sid,...d}).select().single(),
+  createReward:async(sid,d)=>{
+    const p={store_id:sid,name:d.name,points_cost:d.points_cost};
+    if(d.description) p.description=d.description;
+    if(d.type) p.type=d.type;
+    return sb.from("rewards").insert(p).select().single();
+  },
   updateReward:(id,d) => sb.from("rewards").update(d).eq("id",id),
   toggleReward:(id,a) => sb.from("rewards").update({active:a}).eq("id",id),
   deleteReward:(id)   => sb.from("rewards").delete().eq("id",id),
@@ -518,6 +537,10 @@ function OnboardingScreen({user,onDone}) {
 function CampaignModal({clients,store,onClose,showToast}) {
   const settings = store.settings||DEFAULT_SETTINGS;
   const [searchQ,setSearchQ]=useState("");
+  const [sortCol,setSortCol]=useState(null);
+  const [sortDir,setSortDir]=useState("desc");
+  const [ptsFaixaFilter,setPtsFaixaFilter]=useState(null);
+  const [visitFilter,setVisitFilter]=useState(null);
   const [selectedIds,setSelectedIds]=useState(new Set());
   const [filter,setFilter]=useState("all");
   const [msgType,setMsgType]=useState("points");
@@ -580,7 +603,7 @@ function CampaignModal({clients,store,onClose,showToast}) {
       .replace(/\{pontos\}/g,fmtPts(client.points))
       .replace(/\{nivel\}/g,level.name)
       .replace(/\{link\}/g,magicLink(client.magic_token||""))
-      .replace(/\{loja\}/g,store.name)
+      .replace(/\{loja\}/g,getStoreName(store,settings))
       .replace(/\{dias\}/g,String(daysDiff(client.last_visit)))
       .replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
       .replace(/\{posicao\}/g,String(pos))
@@ -687,7 +710,7 @@ function CampaignModal({clients,store,onClose,showToast}) {
             <strong>Variáveis:</strong> {"{nome}"} {"{saldo}"} {"{nivel}"} {"{link}"} {"{loja}"} {"{dias}"} {"{brinde}"} {"{posicao}"} {"{falta}"} {"{bonus}"}
           </div>
           {previewClient&&msg&&(
-            <WAPreview msg={buildMsg(previewClient)} storeName={store.name}/>
+            <WAPreview msg={buildMsg(previewClient)} storeName={getStoreName(store,settings)}/>
           )}
         </div>
       </div>
@@ -792,6 +815,8 @@ function AdminPanel({user,store,onSignOut}) {
   const [quickSearch,setQuickSearch]=useState("");
   const [quickClient,setQuickClient]=useState(null);
   const [quickValue,setQuickValue]=useState("");
+  const [showQuickList,setShowQuickList]=useState(false);
+  const [fromPoints,setFromPoints]=useState(false);
 
   const showToast=(msg,type="success")=>setToast({msg,type});
 
@@ -836,18 +861,55 @@ function AdminPanel({user,store,onSignOut}) {
   const inactiveCount = clients.filter(c=>daysDiff(c.last_visit)>=(settings.inactive_days||30)).length;
   const birthdayCount = clients.filter(c=>isBirthday(c.dob)).length;
 
-  const filtered=useMemo(()=>clients.filter(c=>
-    c.name.toLowerCase().includes(searchQ.toLowerCase())||
-    (c.phone||"").includes(searchQ)
-  ),[clients,searchQ]);
+  const filtered=useMemo(()=>{
+    let list=clients.filter(c=>
+      c.name.toLowerCase().includes(searchQ.toLowerCase())||
+      (c.phone||"").includes(searchQ)
+    );
+    // Filtro faixa de pontos
+    if(ptsFaixaFilter){
+      const [min,max]=ptsFaixaFilter;
+      list=list.filter(c=>(c.points||0)>=min&&(max===null||(c.points||0)<=max));
+    }
+    // Filtro última visita
+    if(visitFilter){
+      list=list.filter(c=>daysDiff(c.last_visit)>=visitFilter);
+    }
+    // Ordenação
+    if(sortCol){
+      list=[...list].sort((a,b)=>{
+        let va,vb;
+        if(sortCol==="points"){va=a.points||0;vb=b.points||0;}
+        else if(sortCol==="visits"){va=a.total_visits||0;vb=b.total_visits||0;}
+        else if(sortCol==="last_visit"){va=a.last_visit?new Date(a.last_visit).getTime():0;vb=b.last_visit?new Date(b.last_visit).getTime():0;}
+        else{va=0;vb=0;}
+        return sortDir==="desc"?vb-va:va-vb;
+      });
+    }
+    return list;
+  },[clients,searchQ,sortCol,sortDir,ptsFaixaFilter,visitFilter]);
+
+  const toggleSort=(col)=>{
+    if(sortCol===col) setSortDir(d=>d==="desc"?"asc":"desc");
+    else{setSortCol(col);setSortDir("desc");}
+  };
+  const sortArrow=(col)=>sortCol===col?(sortDir==="desc"?" ▼":" ▲"):" ⇅";
 
   const quickFiltered=useMemo(()=>{
-    if(!quickSearch||quickSearch.length<2) return clients.slice(0,8);
-    return clients.filter(c=>c.name.toLowerCase().includes(quickSearch.toLowerCase())||(c.phone||"").includes(quickSearch)).slice(0,8);
+    const sorted=[...clients].sort((a,b)=>{
+      const da=a.last_visit?new Date(a.last_visit).getTime():0;
+      const db=b.last_visit?new Date(b.last_visit).getTime():0;
+      return db-da;
+    });
+    if(!quickSearch||quickSearch.length<1) return sorted.slice(0,10);
+    return sorted.filter(c=>
+      c.name.toLowerCase().includes(quickSearch.toLowerCase())||
+      (c.phone||"").includes(quickSearch)
+    ).slice(0,10);
   },[clients,quickSearch]);
 
   // ── Handlers ──
-  const handleAddClient=async()=>{
+  const handleAddClient=async(goToPoints=false)=>{
     if(!clientForm.name||!clientForm.phone){showToast("Nome e telefone são obrigatórios","error");return;}
     const {data,error}=await api.createClient(store.id,{
       name:clientForm.name,
@@ -864,12 +926,20 @@ function AdminPanel({user,store,onSignOut}) {
         .replace(/\{nome\}/g,data.name.split(" ")[0])
         .replace(/\{link\}/g,magicLink(data.magic_token||""))
         .replace(/\{bonus\}/g,String(bonusPts))
-        .replace(/\{loja\}/g,store.name);
+        .replace(/\{loja\}/g,getStoreName(store,settings));
       setTimeout(()=>window.open(waLink(data.phone,completeMsg),"_blank"),500);
     }
     setCF({name:"",phone:"",email:"",dob:"",dobMask:"",notes:""});
-    setModal(null);
     showToast("✅ Cliente cadastrado!");
+    // Se veio do fluxo "Registrar pontos" → abre pontuar direto
+    if(goToPoints||fromPoints){
+      setFromPoints(false);
+      setModal(null);
+      setQuickClient(data);
+      setQuickSearch(data.name);
+    } else {
+      setModal(null);
+    }
   };
 
   const handleEditClient=async()=>{
@@ -911,7 +981,7 @@ function AdminPanel({user,store,onSignOut}) {
       .replace(/\{saldo\}/g,fmtPts(newPts))
       .replace(/\{nivel\}/g,levelName)
       .replace(/\{link\}/g,magicLink(selClient.magic_token||""))
-      .replace(/\{loja\}/g,store.name);
+      .replace(/\{loja\}/g,getStoreName(store,settings));
     await load();
     setModal(null);setPF({value:"",note:""});setSel(null);
     // Confirmação simples pro lojista (sem celebração — celebração é pro cliente)
@@ -933,7 +1003,7 @@ function AdminPanel({user,store,onSignOut}) {
       .replace(/\{saldo\}/g,fmtPts(newPts))
       .replace(/\{nivel\}/g,levelName)
       .replace(/\{link\}/g,magicLink(quickClient.magic_token||""))
-      .replace(/\{loja\}/g,store.name);
+      .replace(/\{loja\}/g,getStoreName(store,settings));
     await load();
     setQuickClient(null);setQuickValue("");setQuickSearch("");
     showToast(`✅ ${fmtPts(pts)} pontos para ${quickClient.name.split(" ")[0]}!`);
@@ -948,6 +1018,14 @@ function AdminPanel({user,store,onSignOut}) {
     setModal(null);showToast("🎁 Recompensa criada!");
   };
 
+  const [savingBlock,setSavingBlock]=useState(null);
+  const saveSettingsBlock=async(blockName)=>{
+    setSavingBlock(blockName);
+    const {error}=await api.updateSettings(store.id,settings);
+    if(error) showToast("Erro ao salvar","error");
+    else showToast("✅ Salvo!");
+    setSavingBlock(null);
+  };
   const handleSaveSettings=async()=>{
     setSavingSett(true);
     await api.updateSettings(store.id,settings);
@@ -959,7 +1037,7 @@ function AdminPanel({user,store,onSignOut}) {
       .replace(/\{nome\}/g,c.name.split(" ")[0])
       .replace(/\{brinde\}/g,settings.birthday_gift||"brinde especial")
       .replace(/\{link\}/g,magicLink(c.magic_token||""))
-      .replace(/\{loja\}/g,store.name);
+      .replace(/\{loja\}/g,getStoreName(store,settings));
     window.open(waLink(c.phone,msg),"_blank");
   };
 
@@ -968,7 +1046,7 @@ function AdminPanel({user,store,onSignOut}) {
       .replace(/\{nome\}/g,c.name.split(" ")[0])
       .replace(/\{link\}/g,magicLink(c.magic_token||""))
       .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))
-      .replace(/\{loja\}/g,store.name);
+      .replace(/\{loja\}/g,getStoreName(store,settings));
     window.open(waLink(c.phone,msg),"_blank");
   };
 
@@ -984,7 +1062,7 @@ function AdminPanel({user,store,onSignOut}) {
         .replace(/\{saldo\}/g,fmtPts(c.points))
         .replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name)
         .replace(/\{link\}/g,magicLink(c.magic_token||""))
-        .replace(/\{loja\}/g,store.name)
+        .replace(/\{loja\}/g,getStoreName(store,settings))
         .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50));
       window.open(waLink(c.phone,msg),"_blank");
     },i*800));
@@ -1047,79 +1125,97 @@ function AdminPanel({user,store,onSignOut}) {
           {/* ══ CENTRAL DE VENDAS ══ */}
           {tab==="dashboard"&&(
             <div>
-              {/* Ação rápida — pontuar cliente */}
-              <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:18,padding:20,marginBottom:20}}>
-                <div style={{color:C.white,fontWeight:700,fontSize:16,marginBottom:4}}>⭐ Registrar pontos</div>
-                <div style={{color:C.r200,fontSize:12,marginBottom:14}}>Busque o cliente e informe o valor da compra</div>
-                <div className="quick-row" style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
-                  <div style={{flex:2,minWidth:180,position:"relative"}}>
-                    <input value={quickSearch} onChange={e=>{setQuickSearch(e.target.value);setQuickClient(null);}}
-                      placeholder="🔍 Buscar cliente pelo nome ou telefone..."
-                      style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"none",fontSize:14,outline:"none"}}/>
-                    {quickSearch.length>=2&&!quickClient&&(
-                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",zIndex:100,maxHeight:200,overflow:"auto"}}>
-                        {quickFiltered.map(c=>(
-                          <div key={c.id} onClick={()=>{setQuickClient(c);setQuickSearch(c.name);}}
-                            style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}
-                            onMouseEnter={e=>e.currentTarget.style.background=C.r50}
-                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              {/* ── Registrar Pontos — Central de Vendas ── */}
+              <div style={{background:`linear-gradient(135deg,${C.r700},${C.r400})`,borderRadius:18,padding:20,marginBottom:16}}>
+                <div style={{color:C.white,fontWeight:700,fontSize:17,marginBottom:2}}>⭐ Registrar pontos</div>
+                <div style={{color:C.r200,fontSize:12,marginBottom:14}}>Clique no campo e selecione o cliente</div>
+
+                {/* Campo de busca com lista automática */}
+                <div style={{position:"relative",marginBottom:10}}>
+                  <input
+                    value={quickSearch}
+                    onChange={e=>{setQuickSearch(e.target.value);setQuickClient(null);}}
+                    onFocus={()=>setShowQuickList(true)}
+                    onBlur={()=>setTimeout(()=>setShowQuickList(false),200)}
+                    placeholder="🔍 Nome ou telefone do cliente..."
+                    style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"none",fontSize:14,outline:"none"}}/>
+
+                  {/* Lista dropdown — aparece ao focar OU ao digitar */}
+                  {(showQuickList||quickSearch.length>=1)&&!quickClient&&(
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:200,maxHeight:280,overflow:"auto",marginTop:4}}>
+                      {quickSearch.length<1&&<div style={{padding:"8px 14px",fontSize:11,color:C.g400,fontWeight:600,borderBottom:`1px solid ${C.g100}`}}>⏱ Últimos clientes atendidos</div>}
+                      {quickFiltered.map(c=>(
+                        <div key={c.id}
+                          style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                          onMouseDown={()=>{setQuickClient(c);setQuickSearch(c.name);setShowQuickList(false);}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <div style={{width:34,height:34,borderRadius:"50%",background:C.r50,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.r500,fontSize:13,flexShrink:0}}>{(c.name||"?")[0]}</div>
                             <div>
                               <div style={{fontWeight:600,fontSize:13,color:C.g900}}>{c.name}</div>
                               <div style={{fontSize:11,color:C.g400}}>{fmtPts(c.points)} pts · {fmtPhone(c.phone)}</div>
                             </div>
-                            <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
                           </div>
-                        ))}
-                        {quickFiltered.length===0&&<div style={{padding:14,fontSize:13,color:C.g400,textAlign:"center"}}>Nenhum cliente encontrado</div>}
-                        <div onClick={()=>{setModal("addClient");setQuickSearch("");}}
-                          style={{padding:"10px 14px",cursor:"pointer",color:C.r400,fontWeight:600,fontSize:13,borderTop:`1px solid ${C.g100}`,textAlign:"center"}}>
-                          + Cadastrar novo cliente
+                          <LevelBadge levelKey={c.level||"basico"} levels={settings.levels}/>
+                        </div>
+                      ))}
+                      {quickFiltered.length===0&&quickSearch.length>=1&&<div style={{padding:14,fontSize:13,color:C.g400,textAlign:"center"}}>Nenhum cliente encontrado</div>}
+                      <div onMouseDown={()=>{setModal("addClientFromPoints");setQuickSearch("");setShowQuickList(false);}}
+                        style={{padding:"11px 14px",cursor:"pointer",color:C.r400,fontWeight:700,fontSize:13,borderTop:`1px solid ${C.g100}`,textAlign:"center",background:C.r50}}>
+                        ➕ Cadastrar novo cliente
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cliente selecionado — campo de valor + pontuar */}
+                {quickClient&&(
+                  <div style={{background:"rgba(255,255,255,0.12)",borderRadius:12,padding:14,marginTop:4}}>
+                    {/* Info do cliente */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                      <div style={{color:C.white}}>
+                        <div style={{fontWeight:700,fontSize:15}}>{quickClient.name.split(" ")[0]}</div>
+                        <div style={{fontSize:12,color:C.r200}}>{fmtPts(quickClient.points)} pts atuais</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <LevelBadge levelKey={quickClient.level||"basico"} levels={settings.levels}/>
+                        <button onClick={()=>{setQuickClient(null);setQuickSearch("");}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:C.white,borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+                      </div>
+                    </div>
+                    {/* Preferências se existir */}
+                    {quickClient.notes&&(
+                      <div style={{background:"rgba(255,255,255,0.15)",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:12,color:C.white}}>
+                        📝 <strong>Preferências:</strong> {quickClient.notes}
+                      </div>
+                    )}
+                    {/* Valor + pontuar */}
+                    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                      <input value={quickValue} onChange={e=>setQuickValue(e.target.value)} type="number" placeholder="Valor da compra R$"
+                        style={{flex:1,padding:"10px 14px",borderRadius:10,border:"none",fontSize:14,outline:"none"}}/>
+                      <Btn onClick={handleQuickPoints} disabled={!quickValue||parseFloat(quickValue)<=0}
+                        style={{background:"rgba(255,255,255,0.25)",color:C.white,border:"1px solid rgba(255,255,255,0.4)",whiteSpace:"nowrap"}}>
+                        ⭐ Pontuar
+                      </Btn>
+                    </div>
+                    {quickValue&&parseFloat(quickValue)>0&&(
+                      <div style={{marginTop:8,fontSize:12,color:C.r100}}>
+                        +{fmtPts(Math.floor(parseFloat(quickValue)*(settings.points_per_real||3)))} pontos → total: {fmtPts(quickClient.points+Math.floor(parseFloat(quickValue)*(settings.points_per_real||3)))} pts
+                      </div>
+                    )}
+                    {/* Recompensas disponíveis */}
+                    {rewards.filter(r=>r.active!==false&&quickClient.points>=(r.points_cost||0)).length>0&&(
+                      <div style={{marginTop:12,borderTop:"1px solid rgba(255,255,255,0.2)",paddingTop:10}}>
+                        <div style={{fontSize:11,color:C.r200,fontWeight:600,marginBottom:6}}>🎁 RECOMPENSAS DISPONÍVEIS AGORA</div>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          {rewards.filter(r=>r.active!==false&&quickClient.points>=(r.points_cost||0)).map(r=>(
+                            <div key={r.id} style={{background:"rgba(255,255,255,0.2)",borderRadius:8,padding:"5px 10px",fontSize:12,color:C.white,fontWeight:600}}>
+                              🎁 {r.name} — {fmtPts(r.points_cost)} pts
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
                   </div>
-                  <div style={{flex:1,minWidth:130}}>
-                    <input value={quickValue} onChange={e=>setQuickValue(e.target.value)} type="number" placeholder="Valor R$"
-                      disabled={!quickClient}
-                      style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"none",fontSize:14,outline:"none",opacity:quickClient?1:0.6}}/>
-                  </div>
-                  <Btn onClick={handleQuickPoints} disabled={!quickClient||!quickValue} style={{background:quickClient?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.1)",color:C.white,border:"1px solid rgba(255,255,255,0.3)"}}>
-                    ⭐ Pontuar
-                  </Btn>
-                </div>
-                {quickClient&&(
-                  <div style={{marginTop:10,padding:"8px 12px",background:"rgba(255,255,255,0.1)",borderRadius:9,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{color:C.white,fontSize:13}}>
-                      <strong>{quickClient.name.split(" ")[0]}</strong> · {fmtPts(quickClient.points)} pts
-                      {quickValue&&parseFloat(quickValue)>0&&<span style={{color:C.r100}}> → +{fmtPts(Math.floor(parseFloat(quickValue)*(settings.points_per_real||3)))} pts</span>}
-                    </div>
-                    <LevelBadge levelKey={quickClient.level||"basico"} levels={settings.levels}/>
-                  </div>
                 )}
-              </div>
-
-              {/* Filtro de datas */}
-              <div style={{background:C.white,borderRadius:12,padding:"12px 16px",marginBottom:16,border:`1px solid ${C.g100}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{fontSize:12,fontWeight:600,color:C.g600}}>📅 Período:</span>
-                {[{v:"today",l:"Hoje"},{v:"week",l:"7 dias"},{v:"month",l:"Este mês"},{v:"year",l:"Este ano"},{v:"all",l:"Tudo"},{v:"custom",l:"Personalizado"}].map(({v,l})=>(
-                  <button key={v} onClick={()=>setDateFilter(v)}
-                    style={{padding:"4px 12px",borderRadius:20,border:`1px solid ${dateFilter===v?C.r400:C.g200}`,background:dateFilter===v?C.r50:"transparent",color:dateFilter===v?C.r500:C.g600,fontSize:12,fontWeight:dateFilter===v?700:400,cursor:"pointer"}}>
-                    {l}
-                  </button>
-                ))}
-                {dateFilter==="custom"&&<>
-                  <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12}}/>
-                  <span style={{fontSize:12,color:C.g400}}>até</span>
-                  <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12}}/>
-                </>}
-              </div>
-
-              {/* Cards principais */}
-              <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
-                <StatCard icon="💰" label="Valor em vendas" value={fmtMoney(totalSales)} sub={`${salesCount} vendas`} accent={C.green}/>
-                <StatCard icon="📦" label="Qtd. de vendas" value={salesCount} sub={`${fmtMoney(totalSales/Math.max(salesCount,1))} ticket médio`} accent={C.blue}/>
-                <StatCard icon="👥" label="Clientes" value={clients.length} sub={`${vipCount} VIPs`} accent={C.r400}/>
-                <StatCard icon="⭐" label="Pts emitidos" value={fmtPts(totalPts)} accent={C.gold}/>
               </div>
 
               {/* Checklist onboarding */}
@@ -1212,6 +1308,86 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
               </div>
 
+              {/* ── Métricas + Filtro de período ── */}
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,padding:"12px 16px",marginBottom:12}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+                  <span style={{fontSize:12,fontWeight:600,color:C.g600}}>📅 Período:</span>
+                  {[{v:"today",l:"Hoje"},{v:"week",l:"7 dias"},{v:"month",l:"Este mês"},{v:"year",l:"Este ano"},{v:"all",l:"Tudo"},{v:"custom",l:"Custom"}].map(({v,l})=>(
+                    <button key={v} onClick={()=>setDateFilter(v)}
+                      style={{padding:"4px 12px",borderRadius:20,border:`1px solid ${dateFilter===v?C.r400:C.g200}`,background:dateFilter===v?C.r50:"transparent",color:dateFilter===v?C.r500:C.g600,fontSize:12,fontWeight:dateFilter===v?700:400,cursor:"pointer"}}>
+                      {l}
+                    </button>
+                  ))}
+                  {dateFilter==="custom"&&<>
+                    <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12}}/>
+                    <span style={{fontSize:12,color:C.g400}}>até</span>
+                    <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12}}/>
+                  </>}
+                </div>
+                <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                  <StatCard icon="💰" label="Valor em vendas" value={fmtMoney(totalSales)} sub={`${salesCount} vendas`} accent={C.green}/>
+                  <StatCard icon="📦" label="Qtd. de vendas" value={salesCount} sub={`ticket ${fmtMoney(totalSales/Math.max(salesCount,1))}`} accent={C.blue}/>
+                  <StatCard icon="👥" label="Clientes" value={clients.length} sub={`${vipCount} VIPs`} accent={C.r400}/>
+                  <StatCard icon="⭐" label="Pts emitidos" value={fmtPts(totalPts)} accent={C.gold}/>
+                </div>
+              </div>
+
+              {/* ── Alertas & Notificações ── */}
+              {(()=>{
+                const alerts=[];
+                if(inactiveCount>0) alerts.push({icon:"😴",color:C.blue,bg:C.blueL,text:`${inactiveCount} cliente${inactiveCount>1?"s":""} inativo${inactiveCount>1?"s":""} há +${settings.inactive_days||30} dias`,btn:"Fazer campanha",action:()=>setShowCampaign(true)});
+                if(birthdayCount>0) alerts.push({icon:"🎂",color:C.gold2,bg:C.goldL,text:`${birthdayCount} aniversariante${birthdayCount>1?"s":""} hoje!`,btn:"Enviar parabéns",action:()=>{clients.filter(c=>isBirthday(c.dob)).forEach(c=>sendBirthday(c));}});
+                const incomplete=clients.filter(c=>!c.email||!c.dob).length;
+                if(incomplete>0) alerts.push({icon:"⚠️",color:C.blueD,bg:"#dbeafe",text:`${incomplete} cadastro${incomplete>1?"s":""} incompleto${incomplete>1?"s":""} — ${settings.bonus_complete_points||50} pts perdidos por cliente`,btn:"Pedir completar",action:()=>{clients.filter(c=>!c.email||!c.dob).forEach(c=>sendIncomplete(c));}});
+                if(alerts.length===0) return null;
+                return (
+                  <div style={{marginBottom:12}}>
+                    {alerts.map((a,i)=>(
+                      <div key={i} style={{background:a.bg,borderRadius:12,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:18}}>{a.icon}</span>
+                          <span style={{fontSize:13,color:a.color,fontWeight:600}}>{a.text}</span>
+                        </div>
+                        <button onClick={a.action} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${a.color}`,background:"transparent",color:a.color,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+                          {a.btn} →
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── Filtros avançados + busca ── */}
+              <div style={{background:C.white,borderRadius:12,padding:"10px 14px",marginBottom:8,border:`1px solid ${C.g100}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 Buscar por nome ou telefone..."
+                  style={{flex:1,minWidth:180,padding:"7px 12px",borderRadius:9,border:`1px solid ${C.g200}`,fontSize:13,outline:"none"}}/>
+                <select value={ptsFaixaFilter?JSON.stringify(ptsFaixaFilter):"all"}
+                  onChange={e=>{const v=e.target.value;setPtsFaixaFilter(v==="all"?null:JSON.parse(v));}}
+                  style={{padding:"7px 10px",borderRadius:9,border:`1px solid ${C.g200}`,fontSize:12,color:C.g700,cursor:"pointer"}}>
+                  <option value="all">⭐ Todos os pontos</option>
+                  <option value="[0,500]">0 – 500 pts</option>
+                  <option value="[500,1000]">500 – 1.000 pts</option>
+                  <option value="[1000,5000]">1.000 – 5.000 pts</option>
+                  <option value="[5000,10000]">5.000 – 10.000 pts</option>
+                  <option value="[10000,null]">+10.000 pts</option>
+                </select>
+                <select value={visitFilter||"all"}
+                  onChange={e=>{const v=e.target.value;setVisitFilter(v==="all"?null:parseInt(v));}}
+                  style={{padding:"7px 10px",borderRadius:9,border:`1px solid ${C.g200}`,fontSize:12,color:C.g700,cursor:"pointer"}}>
+                  <option value="all">📅 Todas as visitas</option>
+                  <option value="30">+30 dias sem visitar</option>
+                  <option value="60">+60 dias sem visitar</option>
+                  <option value="90">+90 dias sem visitar</option>
+                </select>
+                {(ptsFaixaFilter||visitFilter||sortCol)&&(
+                  <button onClick={()=>{setPtsFaixaFilter(null);setVisitFilter(null);setSortCol(null);setSearchQ("");}}
+                    style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${C.red}`,background:C.redL,color:C.red,fontSize:12,cursor:"pointer",fontWeight:600}}>
+                    ✕ Limpar filtros
+                  </button>
+                )}
+                <span style={{fontSize:12,color:C.g400,whiteSpace:"nowrap"}}>{filtered.length} cliente{filtered.length!==1?"s":""}</span>
+              </div>
+
               <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,overflow:"auto"}}>
                 {filtered.length===0
                   ?<div style={{padding:40,textAlign:"center",color:C.g400}}>Nenhum cliente encontrado</div>
@@ -1223,9 +1399,13 @@ function AdminPanel({user,store,onSignOut}) {
                             {selected.size===filtered.length&&filtered.length>0&&<span style={{color:C.white,fontSize:11}}>✓</span>}
                           </div>
                         </th>
-                        {["Cliente","Telefone","Pontos","Nível","Visitas","Últ. visita",""].map(h=>(
-                          <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>{h}</th>
-                        ))}
+                        <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>Cliente</th>
+                        <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>Telefone</th>
+                        <th onClick={()=>toggleSort("points")} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:sortCol==="points"?C.r500:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap",cursor:"pointer",userSelect:"none"}}>Pontos{sortArrow("points")}</th>
+                        <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>Nível</th>
+                        <th onClick={()=>toggleSort("visits")} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:sortCol==="visits"?C.r500:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap",cursor:"pointer",userSelect:"none"}}>Visitas{sortArrow("visits")}</th>
+                        <th onClick={()=>toggleSort("last_visit")} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:sortCol==="last_visit"?C.r500:C.g600,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap",cursor:"pointer",userSelect:"none"}}>Últ. visita{sortArrow("last_visit")}</th>
+                        <th style={{padding:"10px 12px"}}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1273,7 +1453,7 @@ function AdminPanel({user,store,onSignOut}) {
                                 <button onClick={()=>{setSel(c);setEF({name:c.name||"",phone:fmtPhone(c.phone||""),email:c.email||"",dob:c.dob||"",notes:c.notes||""});setModal("editClient");}}
                                   title="Editar cadastro"
                                   style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.white,color:C.g600,cursor:"pointer",fontSize:13}}>✏️</button>
-                                <button onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points)).replace(/\{pontos\}/g,"").replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name).replace(/\{link\}/g,magicLink(c.magic_token||"")).replace(/\{loja\}/g,store.name)),"_blank")}
+                                <button onClick={()=>window.open(waLink(c.phone,(settings.msg_points||DEFAULT_SETTINGS.msg_points).replace(/\{nome\}/g,c.name.split(" ")[0]).replace(/\{saldo\}/g,fmtPts(c.points)).replace(/\{pontos\}/g,"").replace(/\{nivel\}/g,getLevelInfo(c.level||"basico",settings.levels||DEFAULT_SETTINGS.levels).name).replace(/\{link\}/g,magicLink(c.magic_token||"")).replace(/\{loja\}/g,getStoreName(store,settings))),"_blank")}
                                   title="Enviar link mágico"
                                   style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.white,color:C.green,cursor:"pointer",fontSize:13}}>🔗</button>
                                 {isBday&&<button onClick={()=>sendBirthday(c)} title="Enviar parabéns" style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${C.goldL}`,background:C.goldL,color:C.gold2,cursor:"pointer",fontSize:13}}>🎂</button>}
@@ -1293,6 +1473,45 @@ function AdminPanel({user,store,onSignOut}) {
                   <Btn sm variant="green" onClick={()=>sendToSelected(settings.msg_points||DEFAULT_SETTINGS.msg_points)}>📤 Notif. pontos</Btn>
                   <Btn sm variant="secondary" onClick={()=>sendToSelected(settings.msg_custom||DEFAULT_SETTINGS.msg_custom)}>📤 Msg personalizada</Btn>
                   <Btn sm variant="ghost" onClick={()=>setSelected(new Set())}>Limpar</Btn>
+                </div>
+              )}
+
+              {/* ── Transações do período ── */}
+              {filteredTxs.length>0&&(
+                <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.g100}`,marginTop:16,overflow:"hidden"}}>
+                  <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontWeight:700,fontSize:14,color:C.g900}}>📋 Transações do período</span>
+                    <span style={{fontSize:12,color:C.g400}}>{filteredTxs.length} registro{filteredTxs.length!==1?"s":""}</span>
+                  </div>
+                  <div style={{maxHeight:320,overflow:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      <thead>
+                        <tr style={{background:C.g50}}>
+                          {["Cliente","Tipo","Pontos","Valor","Data"].map(h=>(
+                            <th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:C.g600,textTransform:"uppercase",letterSpacing:0.5}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredTxs.slice(0,50).map(t=>{
+                          const c=clients.find(cl=>cl.id===t.client_id);
+                          return (
+                            <tr key={t.id} style={{borderTop:`1px solid ${C.g100}`}}>
+                              <td style={{padding:"9px 12px",fontSize:13,fontWeight:600,color:C.g900}}>{c?.name||"—"}</td>
+                              <td style={{padding:"9px 12px"}}>
+                                <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:t.type==="earn"?C.greenL:C.redL,color:t.type==="earn"?C.greenD:C.red}}>
+                                  {t.type==="earn"?"Ganhou":"Resgatou"}
+                                </span>
+                              </td>
+                              <td style={{padding:"9px 12px",fontSize:13,fontWeight:700,color:t.type==="earn"?C.green:C.red}}>{t.type==="earn"?"+":"-"}{fmtPts(t.points)} pts</td>
+                              <td style={{padding:"9px 12px",fontSize:13,color:C.g700}}>{t.amount_paid?fmtMoney(t.amount_paid):"—"}</td>
+                              <td style={{padding:"9px 12px",fontSize:12,color:C.g400}}>{fmtDateTime(t.created_at)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -1389,6 +1608,9 @@ function AdminPanel({user,store,onSignOut}) {
                     <option value="restaurante">Restaurante</option>
                     <option value="outro">Outro</option>
                   </Select>
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+                    <Btn sm loading={savingBlock==="empresa"} onClick={()=>saveSettingsBlock("empresa")}>💾 Salvar dados da empresa</Btn>
+                  </div>
                 </div>
               </div>
 
@@ -1407,6 +1629,9 @@ function AdminPanel({user,store,onSignOut}) {
                   </div>
                   <div style={{padding:"10px 12px",background:C.r50,borderRadius:9,fontSize:13,color:C.r500}}>
                     💡 Compra de R$30 = <strong>{Math.floor(30*(settings.points_per_real||3))} pontos</strong>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
+                    <Btn sm loading={savingBlock==="regras"} onClick={()=>saveSettingsBlock("regras")}>💾 Salvar regras</Btn>
                   </div>
                 </div>
               </div>
@@ -1430,6 +1655,9 @@ function AdminPanel({user,store,onSignOut}) {
                       </div>
                     </div>
                   )}
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+                    <Btn sm loading={savingBlock==="validade"} onClick={()=>saveSettingsBlock("validade")}>💾 Salvar validade</Btn>
+                  </div>
                 </div>
               </div>
 
@@ -1469,6 +1697,9 @@ function AdminPanel({user,store,onSignOut}) {
                 </div>
                 <div style={{padding:20}}>
                   <Input label="Presente de aniversário" value={settings.birthday_gift||""} onChange={e=>setSettings({...settings,birthday_gift:e.target.value})} placeholder="Ex: Açaí 300ml grátis 🍇"/>
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+                    <Btn sm loading={savingBlock==="aniversario"} onClick={()=>saveSettingsBlock("aniversario")}>💾 Salvar brinde</Btn>
+                  </div>
                 </div>
               </div>
 
@@ -1486,10 +1717,13 @@ function AdminPanel({user,store,onSignOut}) {
                       <button onClick={()=>{const ps=(settings.products||[]).filter((_,ii)=>ii!==i);setSettings({...settings,products:ps});}} style={{padding:"6px 10px",borderRadius:8,background:C.redL,border:"none",color:C.red,cursor:"pointer",fontSize:14}}>🗑</button>
                     </div>
                   ))}
-                  <button onClick={()=>setSettings({...settings,products:[...(settings.products||[]),{name:"",price:0}]})}
-                    style={{padding:"8px 16px",borderRadius:9,border:`1.5px dashed ${C.r300}`,background:C.r50,color:C.r500,cursor:"pointer",fontSize:13,fontWeight:600,width:"100%"}}>
-                    + Adicionar produto
-                  </button>
+                  <div style={{display:"flex",gap:8,marginTop:4}}>
+                    <button onClick={()=>setSettings({...settings,products:[...(settings.products||[]),{name:"",price:0}]})}
+                      style={{flex:1,padding:"8px 16px",borderRadius:9,border:`1.5px dashed ${C.r300}`,background:C.r50,color:C.r500,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                      + Adicionar produto
+                    </button>
+                    <Btn sm loading={savingBlock==="produtos"} onClick={()=>saveSettingsBlock("produtos")}>💾 Salvar produtos</Btn>
+                  </div>
                 </div>
               </div>
 
@@ -1513,6 +1747,9 @@ function AdminPanel({user,store,onSignOut}) {
                   ].map(({key,label,default:def})=>(
                     <div key={key} style={{marginBottom:18,paddingBottom:18,borderBottom:`1px solid ${C.g100}`}}>
                       <Textarea label={label} value={settings[key]!=null?settings[key]:def} onChange={e=>setSettings({...settings,[key]:e.target.value})} rows={4}/>
+                      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+                        <Btn sm loading={savingBlock===key} onClick={()=>saveSettingsBlock(key)}>💾 Salvar mensagem</Btn>
+                      </div>
                       <WAPreview
                         msg={(settings[key]!=null?settings[key]:def)
                           .replace(/\{nome\}/g,"João")
@@ -1520,13 +1757,13 @@ function AdminPanel({user,store,onSignOut}) {
                           .replace(/\{pontos\}/g,"25")
                           .replace(/\{nivel\}/g,"VIP Bronze")
                           .replace(/\{link\}/g,APP_URL)
-                          .replace(/\{loja\}/g,store.name)
+                          .replace(/\{loja\}/g,getStoreName(store,settings))
                           .replace(/\{dias\}/g,"42")
                           .replace(/\{brinde\}/g,settings.birthday_gift||"brinde")
                           .replace(/\{posicao\}/g,"3")
                           .replace(/\{falta\}/g,"180")
                           .replace(/\{bonus\}/g,String(settings.bonus_complete_points||50))}
-                        storeName={store.name}/>
+                        storeName={getStoreName(store,settings)}/>
                     </div>
                   ))}
                 </div>
@@ -1573,6 +1810,35 @@ function AdminPanel({user,store,onSignOut}) {
           <div style={{display:"flex",gap:10}}>
             <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
             <Btn full onClick={handleAddClient}>Cadastrar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal cadastro vindo de registrar pontos — após cadastrar abre pontuar */}
+      {modal==="addClientFromPoints"&&(
+        <Modal title="➕ Novo cliente → Pontuar" onClose={()=>setModal(null)}>
+          <div style={{padding:"8px 12px",background:C.blueL,borderRadius:9,fontSize:13,color:C.blueD,marginBottom:14}}>
+            📌 Após cadastrar, já abrirá o campo para pontuar este cliente!
+          </div>
+          <Input label="Nome completo *" value={clientForm.name} onChange={e=>setCF({...clientForm,name:e.target.value})} placeholder="Ana Beatriz Santos"/>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Telefone (WhatsApp) *</div>
+            <input type="tel" inputMode="numeric" value={clientForm.phone}
+              onChange={e=>setCF({...clientForm,phone:fmtPhone(e.target.value)})}
+              placeholder="(11) 99999-9999" maxLength={15}
+              style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.g700,marginBottom:5}}>Data de nascimento <span style={{color:C.g400,fontWeight:400}}>(DD/MM/AAAA)</span></div>
+            <input type="text" inputMode="numeric" value={clientForm.dobMask||""}
+              onChange={e=>{const m=fmtDobMask(e.target.value);setCF({...clientForm,dobMask:m,dob:dobMaskToISO(m)});}}
+              placeholder="01/01/1990" maxLength={10}
+              style={{width:"100%",padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+          </div>
+          <Input label="E-mail (opcional)" type="email" value={clientForm.email} onChange={e=>setCF({...clientForm,email:e.target.value})} placeholder="ana@email.com"/>
+          <div style={{display:"flex",gap:10,marginTop:4}}>
+            <Btn variant="ghost" full onClick={()=>setModal(null)}>Cancelar</Btn>
+            <Btn full onClick={()=>handleAddClient(true)}>Cadastrar e Pontuar ⭐</Btn>
           </div>
         </Modal>
       )}
@@ -1655,8 +1921,20 @@ function AdminPanel({user,store,onSignOut}) {
                 .replace(/\{saldo\}/g,fmtPts((selClient.points||0)+Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3))))
                 .replace(/\{nivel\}/g,getLevelInfo(getLevel((selClient.points||0)+Math.floor(parseFloat(pointsForm.value||0)*(settings.points_per_real||3)),settings.levels||DEFAULT_SETTINGS.levels),settings.levels||DEFAULT_SETTINGS.levels).name)
                 .replace(/\{link\}/g,magicLink(selClient.magic_token||""))
-                .replace(/\{loja\}/g,store.name)}
-              storeName={store.name}/>
+                .replace(/\{loja\}/g,getStoreName(store,settings))}
+              storeName={getStoreName(store,settings)}/>
+          )}
+          {rewards.filter(r=>r.active!==false&&selClient.points>=(r.points_cost||0)).length>0&&(
+            <div style={{padding:"10px 12px",background:C.greenL,borderRadius:9,fontSize:13,color:C.greenD,marginBottom:12}}>
+              <div style={{fontWeight:600,marginBottom:6}}>🎁 Recompensas disponíveis para troca agora:</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {rewards.filter(r=>r.active!==false&&selClient.points>=(r.points_cost||0)).map(r=>(
+                  <span key={r.id} style={{background:C.white,borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:600,border:`1px solid ${C.green}`}}>
+                    🎁 {r.name} — {fmtPts(r.points_cost)} pts
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
           <div style={{display:"flex",gap:10,marginTop:8}}>
             <Btn variant="ghost" full onClick={()=>{setModal(null);setSel(null);}}>Cancelar</Btn>
@@ -1738,11 +2016,14 @@ function ClientPortal({token}) {
       setTxs(t.data||[]);
       setAllClients(all.data||[]);
       setLoading(false);
-      // Verificar se há pontos recentes (últimos 5 min) → celebrar
+      // Celebração única por transação (usa localStorage para não repetir)
       const lastTx=(t.data||[]).find(tx=>tx.type==="earn");
       if(lastTx){
         const minsAgo=(Date.now()-new Date(lastTx.created_at).getTime())/60000;
-        if(minsAgo<5){
+        const celebKey="roxo_celebrated_"+lastTx.id;
+        const alreadyCelebrated=localStorage.getItem(celebKey);
+        if(minsAgo<10&&!alreadyCelebrated){
+          localStorage.setItem(celebKey,"1");
           const settings=c.stores?.settings||DEFAULT_SETTINGS;
           const newLevel=getLevel(c.points,settings.levels||DEFAULT_SETTINGS.levels);
           setCelebData({pts:lastTx.points,newPts:c.points,clientName:c.name,newLevel,prevLevel:newLevel,settings});
